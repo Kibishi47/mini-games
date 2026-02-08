@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { User } from 'src/generated/prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
+import type { SafeUserDto } from './dto/safe.dto';
 import { CreateUserDto } from './dto/create.dto';
-import { SafeUserDto } from './dto/safe.dto';
+import { UserWhereInput } from 'src/generated/prisma/models/User';
 
-const safeColumns = {
+@Injectable()
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  public readonly safeSelect = {
     id: true,
     username: true,
     provider: true,
@@ -12,35 +16,37 @@ const safeColumns = {
     displayName: true,
     avatarUrl: true,
     createdAt: true,
-}
+  } as const;
 
-@Injectable()
-export class UsersService {
-    constructor(private readonly prisma: PrismaService) {}
+  async exists(where: UserWhereInput): Promise<boolean> {
+    const user = await this.prisma.user.findFirst({
+      where,
+      select: { id: true },
+    });
+    return !!user;
+  }
 
-    async findForLogin(username: string, provider: string): Promise<User | null> {
-        return this.prisma.user.findFirst({
-            where: {
-                username,
-                provider,
-            },
-        });
-    }
+  async findUserForLogin(where: UserWhereInput): Promise<(SafeUserDto & { passwordHash: string | null }) | null> {
+    return this.prisma.user.findFirst({
+      where,
+      select: {
+        ...this.safeSelect,
+        passwordHash: true,
+      },
+    }) as any;
+  }
 
-    async findByUsername(username: string): Promise<SafeUserDto | null> {
-        return this.prisma.user.findFirst({
-            select: safeColumns,
-            where: {
-                username,
-            },
-        });
-    }
+  async createUser(dto: CreateUserDto): Promise<SafeUserDto> {
+    return this.prisma.user.create({
+      data: dto,
+      select: this.safeSelect,
+    });
+  }
 
-    async create(dto: CreateUserDto): Promise<SafeUserDto> {
-        const user = await this.prisma.user.create({
-            select: safeColumns,
-            data: dto,
-        });
-        return user;
-    }
+  async findById(id: string): Promise<SafeUserDto | null> {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: this.safeSelect,
+    });
+  }
 }

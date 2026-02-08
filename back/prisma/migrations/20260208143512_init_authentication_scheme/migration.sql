@@ -28,5 +28,8 @@ CREATE UNIQUE INDEX "User_username_provider_key" ON "User"("username", "provider
 -- CreateIndex
 CREATE UNIQUE INDEX "User_provider_providerId_key" ON "User"("provider", "providerId");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "AuthToken_tokenHash_key" ON "AuthToken"("tokenHash");
+
 -- AddForeignKey
 ALTER TABLE "AuthToken" ADD CONSTRAINT "AuthToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
