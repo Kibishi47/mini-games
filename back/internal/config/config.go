@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	Port               int
 	CorsAllowedOrigins []string
 	DatabaseURL        string
+	AuthTokenTTL       time.Duration
 }
 
 func Load() (Config, error) {
@@ -24,6 +26,7 @@ func Load() (Config, error) {
 		Port:               getEnvAsInt("PORT", 8080),
 		CorsAllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "")),
 		DatabaseURL:        getEnv("DATABASE_URL", ""),
+		AuthTokenTTL:       getEnvAsDuration("AUTH_TOKEN_TTL", time.Hour*24*7),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -50,6 +53,20 @@ func getEnvAsInt(key string, fallback int) int {
 		return fallback
 	}
 	return i
+}
+
+func getEnvAsDuration(key string, fallback time.Duration) time.Duration {
+	v := getEnv(key, "")
+	if v == "" {
+		return fallback
+	}
+
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+
+	return d
 }
 
 func splitCSV(s string) []string {
