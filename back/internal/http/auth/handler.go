@@ -1,33 +1,22 @@
-package handlers
+package auth
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
 
 	"github.com/Kibishi47/mini-games/back/internal/domain/auth"
-	"github.com/Kibishi47/mini-games/back/internal/domain/user"
 	"github.com/Kibishi47/mini-games/back/internal/http/middlewares"
 	"github.com/Kibishi47/mini-games/back/internal/http/response"
-	"github.com/google/uuid"
 )
 
-type AuthUseCase interface {
-	LoginLocal(ctx context.Context, username string, password string) (string, time.Time, error)
-	RegisterLocal(ctx context.Context, username string, password string) (string, time.Time, error)
-	Authenticate(ctx context.Context, rawToken string) (uuid.UUID, error)
-	GetUserByID(ctx context.Context, id uuid.UUID) (*user.User, error)
-	Logout(ctx context.Context, rawToken string) error
+type Handler struct {
+	auth UseCases
 }
 
-type AuthHandler struct {
-	auth AuthUseCase
-}
-
-func NewAuthHandler(auth AuthUseCase) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewHandler(auth UseCases) *Handler {
+	return &Handler{auth: auth}
 }
 
 type authRequest struct {
@@ -40,16 +29,9 @@ type authResponse struct {
 	ExpiresAt   time.Time `json:"expiresAt"`
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req authRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, "invalid json", http.StatusBadRequest)
-		return
-	}
-
-	if req.Username == "" || req.Password == "" {
-		response.Error(w, "username and password are required", http.StatusBadRequest)
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	req, err := h.getAuthRequest(w, r)
+	if err != nil {
 		return
 	}
 
@@ -70,16 +52,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req authRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, "invalid json", http.StatusBadRequest)
-		return
-	}
-
-	if req.Username == "" || req.Password == "" {
-		response.Error(w, "username and password are required", http.StatusBadRequest)
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	req, err := h.getAuthRequest(w, r)
+	if err != nil {
 		return
 	}
 
@@ -100,7 +75,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middlewares.UserIDFromContext(r.Context())
 	if !ok {
 		response.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -124,7 +99,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	rawToken, ok := middlewares.TokenFromContext(r.Context())
 	if !ok {
 		response.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -137,4 +112,20 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Success(w, "ok", http.StatusOK)
+}
+
+func (h *Handler) getAuthRequest(w http.ResponseWriter, r *http.Request) (*authRequest, error) {
+	var req authRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, "invalid json", http.StatusBadRequest)
+		return nil, err
+	}
+
+	if req.Username == "" || req.Password == "" {
+		response.Error(w, "username and password are required", http.StatusBadRequest)
+		return nil, errors.New("username and password are required")
+	}
+
+	return &req, nil
 }

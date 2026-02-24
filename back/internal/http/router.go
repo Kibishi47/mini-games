@@ -4,7 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Kibishi47/mini-games/back/internal/http/handlers"
+	"github.com/Kibishi47/mini-games/back/internal/http/auth"
+	"github.com/Kibishi47/mini-games/back/internal/http/health"
 	"github.com/Kibishi47/mini-games/back/internal/http/middlewares"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -37,26 +38,13 @@ func NewRouter(cfg config.Config, deps *Deps) http.Handler {
 		}))
 	}
 
-	// Handlers
-	healthHandler := handlers.NewHealthHandler(deps.DB)
-	authHandler := handlers.NewAuthHandler(deps.Auth)
+	// Middlewares
+	authMw := middlewares.AuthRequired(deps.Auth)
 
 	// Routes
-	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/health", healthHandler.Health)
-		r.Get("/health/db", healthHandler.HealthDB)
-
-		r.Route("/auth", func(r chi.Router) {
-			r.Post("/login", authHandler.Login)
-			r.Post("/register", authHandler.Register)
-
-			r.Group(func(r chi.Router) {
-				r.Use(middlewares.AuthRequired(deps.Auth))
-
-				r.Get("/me", authHandler.Me)
-				r.Post("/logout", authHandler.Logout)
-			})
-		})
+	r.Route("/api", func(r chi.Router) {
+		health.Routes(r)
+		auth.Routes(r, deps.Auth, authMw)
 	})
 
 	return r

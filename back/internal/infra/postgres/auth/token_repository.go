@@ -1,4 +1,4 @@
-package authrepo
+package auth
 
 import (
 	"context"
