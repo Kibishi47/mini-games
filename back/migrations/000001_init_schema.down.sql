@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS game_result;
+DROP TABLE IF EXISTS game_session;
+DROP TABLE IF EXISTS room;
+DROP TABLE IF EXISTS auth_token;
+DROP TABLE IF EXISTS auth_identity;
+DROP TABLE IF EXISTS "user";
+
+DROP TYPE IF EXISTS auth_provider;
+DROP TYPE IF EXISTS room_status;
+DROP TYPE IF EXISTS game;
