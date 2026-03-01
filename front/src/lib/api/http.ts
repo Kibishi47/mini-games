@@ -18,10 +18,13 @@ export class HttpError extends Error {
 export async function http<T>(path: string, options: HttpOptions = {}): Promise<T> {
   const { json, headers, ...rest } = options;
 
+  const token = localStorage.getItem("accessToken");
+
   const res = await fetch(`${API_URL}${path}`, {
     ...rest,
     headers: {
       ...(json ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
       ...(headers ?? {}),
     },
     body: json ? JSON.stringify(json) : rest.body,

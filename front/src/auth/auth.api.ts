@@ -1,5 +1,5 @@
 import { http } from "@/lib/api/http";
-import type { AuthResponse, LoginPayload, RegisterPayload } from "./auth.types";
+import type { AuthResponse, LoginPayload, RegisterPayload, User } from "./auth.types";
 
 export const authApi = {
   login(payload: LoginPayload) {
@@ -10,8 +10,8 @@ export const authApi = {
     return http<AuthResponse>("/auth/register", { method: "POST", json: payload });
   },
 
-  refresh() {
-    return http<AuthResponse>("/auth/refresh", { method: "POST" });
+  me() {
+    return http<{ user: User }>("/auth/me", { method: "GET" });
   },
 
   logout() {

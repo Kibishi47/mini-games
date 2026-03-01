@@ -8,6 +8,7 @@ import NotFoundPage from "../pages/NotFoundPage";
 import PlayPage from "../pages/PlayPage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
+import ProfilePage from "../pages/ProfilePage";
 
 export const router = createBrowserRouter([
     {
@@ -17,6 +18,11 @@ export const router = createBrowserRouter([
             {
                 path: "/play",
                 element: <PlayPage />,
+                loader: requireAuthLoader,
+            },
+            {
+                path: "/profile",
+                element: <ProfilePage />,
                 loader: requireAuthLoader,
             },
             {

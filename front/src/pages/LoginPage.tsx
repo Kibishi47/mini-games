@@ -1,9 +1,15 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/common/Button";
+import { useAuth } from "../auth/AuthContext";
+import { authApi } from "../auth/auth.api";
 import "@/styles/pages/auth.css";
 
 const LoginPage = () => {
+    const { setAuth } = useAuth();
+    const navigate = useNavigate();
+    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         username: "",
         password: "",
@@ -14,10 +20,19 @@ const LoginPage = () => {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("Login attempt:", formData);
-        alert("Fonctionnalité de connexion à venir !");
+        setError(null);
+        setIsLoading(true);
+        try {
+            const { accessToken } = await authApi.login(formData);
+            await setAuth(accessToken);
+            navigate("/");
+        } catch (err: any) {
+            setError(err.body?.message || "Identifiants invalides");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -25,6 +40,8 @@ const LoginPage = () => {
             <div className="auth-container">
                 <div className="auth-card">
                     <h1 className="auth-title text-gradient">Connexion</h1>
+
+                    {error && <div className="auth-error" style={{ color: "red", marginBottom: "1rem", textAlign: "center" }}>{error}</div>}
 
                     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
                         <div className="form-group">
@@ -59,8 +76,8 @@ const LoginPage = () => {
                             />
                         </div>
 
-                        <Button variant="primary" type="submit" className="btn-full" style={{ marginTop: "1rem" }}>
-                            Se connecter
+                        <Button variant="primary" type="submit" className="btn-full" style={{ marginTop: "1rem" }} disabled={isLoading}>
+                            {isLoading ? "Connexion..." : "Se connecter"}
                         </Button>
                     </form>
 

@@ -1,13 +1,18 @@
 export type User = {
-    id: string
-    username: string
-    provider: string
-    avatarUrl: string
+  id: string
+  username: string
+  displayName: string
+  avatarUrl: string
+  createdAt: string
 }
 
 export type AuthResponse = {
-  user: User;
   accessToken: string;
+  expiresAt: string;
+};
+
+export type MeResponse = {
+  user: User;
 };
 
 export type LoginPayload = {

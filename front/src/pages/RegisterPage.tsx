@@ -1,9 +1,15 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/common/Button";
+import { useAuth } from "../auth/AuthContext";
+import { authApi } from "../auth/auth.api";
 import "@/styles/pages/auth.css";
 
 const RegisterPage = () => {
+    const { setAuth } = useAuth();
+    const navigate = useNavigate();
+    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         username: "",
         password: "",
@@ -15,14 +21,31 @@ const RegisterPage = () => {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
         if (formData.password !== formData.confirmPassword) {
-            alert("Les mots de passe ne correspondent pas !");
+            setError("Les mots de passe ne correspondent pas !");
             return;
         }
-        console.log("Register attempt:", formData);
-        alert("Fonctionnalité d'inscription à venir !");
+
+        setIsLoading(true);
+        try {
+            const { accessToken } = await authApi.register({
+                username: formData.username,
+                password: formData.password
+            });
+            await setAuth(accessToken);
+            navigate("/");
+        } catch (err: any) {
+            if (err.status === 409) {
+                setError("Nom d'utilisateur déjà pris");
+            } else {
+                setError(err.body?.message || "Erreur lors de l'inscription");
+            }
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -30,6 +53,8 @@ const RegisterPage = () => {
             <div className="auth-container">
                 <div className="auth-card">
                     <h1 className="auth-title text-gradient">Inscription</h1>
+
+                    {error && <div className="auth-error" style={{ color: "red", marginBottom: "1rem", textAlign: "center" }}>{error}</div>}
 
                     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
                         <div className="form-group">
@@ -80,8 +105,8 @@ const RegisterPage = () => {
                             />
                         </div>
 
-                        <Button variant="primary" type="submit" className="btn-full" style={{ marginTop: "1rem" }}>
-                            S'inscrire
+                        <Button variant="primary" type="submit" className="btn-full" style={{ marginTop: "1rem" }} disabled={isLoading}>
+                            {isLoading ? "Inscription..." : "S'inscrire"}
                         </Button>
                     </form>
 

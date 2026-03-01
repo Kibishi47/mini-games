@@ -8,7 +8,7 @@ export type AuthState = {
 }
 
 export type AuthActions = {
-    setAuth: (data: { user: User; accessToken: string }) => void;
+    setAuth: (accessToken: string) => Promise<void>;
     clearAuth: () => void;
     refreshAuth: () => Promise<void>;
     logout: () => Promise<void>;

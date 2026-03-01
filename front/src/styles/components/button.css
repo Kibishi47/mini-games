@@ -42,6 +42,20 @@
     color: var(--color-text);
 }
 
+.btn-danger {
+    background: transparent;
+    border: 1px solid rgba(255, 77, 77, 0.3);
+    color: #ff4d4d;
+}
+
+.btn-danger:hover {
+    border-color: #ff4d4d;
+    background: rgba(255, 77, 77, 0.05);
+    color: #ff4d4d;
+    box-shadow: 0 0 15px rgba(255, 77, 77, 0.4);
+    transform: translateY(-1px);
+}
+
 .btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;

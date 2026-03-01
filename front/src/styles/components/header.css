@@ -41,6 +41,10 @@
   align-items: center;
 }
 
+.nav-actions .btn {
+  min-width: 140px;
+}
+
 /* Header Buttons are handled by Button component */
 
 /* Active State for Links */

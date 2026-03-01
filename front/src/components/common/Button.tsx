@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "@/styles/components/button.css";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: "primary" | "outline";
+    variant?: "primary" | "outline" | "danger";
     to?: string;
     className?: string;
 }

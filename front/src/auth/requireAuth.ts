@@ -3,7 +3,7 @@ import { authApi } from "./auth.api";
 
 export const requireAuthLoader = async () => {
     try {
-        await authApi.refresh();
+        await authApi.me();
         return null;
     } catch {
         return redirect("/login");
@@ -12,7 +12,7 @@ export const requireAuthLoader = async () => {
 
 export const requireGuestLoader = async () => {
     try {
-        await authApi.refresh();
+        await authApi.me();
         return redirect("/account");
     } catch {
         return null;

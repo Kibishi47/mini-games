@@ -71,6 +71,7 @@ func (s *Service) RegisterLocal(ctx context.Context, username string, password s
 		ID:           uuid.New(),
 		Username:     username,
 		PasswordHash: &hash,
+		DisplayName:  &username,
 		CreatedAt:    time.Now(),
 	}
 
