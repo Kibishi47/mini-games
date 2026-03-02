@@ -10,6 +10,7 @@ import (
 	"github.com/Kibishi47/mini-games/back/internal/infra/postgres"
 	auth2 "github.com/Kibishi47/mini-games/back/internal/infra/postgres/auth"
 	"github.com/Kibishi47/mini-games/back/internal/infra/postgres/user"
+	"github.com/Kibishi47/mini-games/back/internal/ws"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,6 +18,7 @@ type App struct {
 	CFG    config.Config
 	DB     *pgxpool.Pool
 	Router http.Handler
+	Hub    *ws.Hub
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -24,6 +26,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// ws
+	hub := ws.NewHub()
+	go hub.Run()
 
 	// user
 	userRepo := user.NewPostgresUserRepository(pool)
@@ -36,6 +42,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	// container
 	deps := &apihttp.Deps{
 		Auth: authService,
+		WS:   hub,
 	}
 
 	// router
@@ -45,5 +52,6 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		CFG:    cfg,
 		DB:     pool,
 		Router: router,
+		Hub:    hub,
 	}, nil
 }

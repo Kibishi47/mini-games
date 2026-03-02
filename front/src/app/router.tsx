@@ -9,6 +9,7 @@ import PlayPage from "../pages/PlayPage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import ProfilePage from "../pages/ProfilePage";
+import TestPage from "../pages/TestPage";
 
 export const router = createBrowserRouter([
     {
@@ -24,6 +25,10 @@ export const router = createBrowserRouter([
                 path: "/profile",
                 element: <ProfilePage />,
                 loader: requireAuthLoader,
+            },
+            {
+                path: "/test",
+                element: <TestPage />,
             },
             {
                 path: "/login",

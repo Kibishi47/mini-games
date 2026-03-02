@@ -7,6 +7,7 @@ import (
 	"github.com/Kibishi47/mini-games/back/internal/http/auth"
 	"github.com/Kibishi47/mini-games/back/internal/http/health"
 	"github.com/Kibishi47/mini-games/back/internal/http/middlewares"
+	"github.com/Kibishi47/mini-games/back/internal/ws"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -46,6 +47,8 @@ func NewRouter(cfg config.Config, deps *Deps) http.Handler {
 		health.Routes(r)
 		auth.Routes(r, deps.Auth, authMw)
 	})
+
+	ws.Routes(r, deps.WS, deps.Auth)
 
 	return r
 }
