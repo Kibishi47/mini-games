@@ -1,6 +1,6 @@
-import Button from "../components/common/Button";
+import Button from "../../components/common/Button";
 
-const NotFoundPage = () => {
+const Error404Page = () => {
     return (
         <div
             style={{
@@ -51,4 +51,4 @@ const NotFoundPage = () => {
     );
 };
 
-export default NotFoundPage;
+export default Error404Page;

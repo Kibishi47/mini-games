@@ -3,17 +3,17 @@ import RootLayout from "../layouts/RootLayout";
 import { requireAuthLoader, requireGuestLoader } from "@/auth/requireAuth";
 
 import HomePage from "../pages/HomePage";
-import NotFoundPage from "../pages/NotFoundPage";
-
 import PlayPage from "../pages/PlayPage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import ProfilePage from "../pages/ProfilePage";
 import TestPage from "../pages/TestPage";
+import ErrorBoundary from "../pages/errors/ErrorBoundary";
 
 export const router = createBrowserRouter([
     {
         element: <RootLayout />,
+        errorElement: <ErrorBoundary />,
         children: [
             { path: "/", element: <HomePage /> },
             {
@@ -41,9 +41,5 @@ export const router = createBrowserRouter([
                 loader: requireGuestLoader,
             },
         ],
-    },
-    {
-        path: "*",
-        element: <NotFoundPage />,
     },
 ]);
