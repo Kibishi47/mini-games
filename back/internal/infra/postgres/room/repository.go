@@ -75,3 +75,14 @@ func (r *postgresRoomRepository) UpdateMaxPlayers(ctx context.Context, id uuid.U
 	_, err := r.pool.Exec(ctx, query, maxPlayers, id)
 	return err
 }
+
+func (r *postgresRoomRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domainroom.Status) error {
+	query := `
+		UPDATE room
+		SET status = $1
+		WHERE id = $2
+	`
+
+	_, err := r.pool.Exec(ctx, query, status, id)
+	return err
+}

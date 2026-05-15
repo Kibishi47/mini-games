@@ -21,6 +21,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     const [players, setPlayers] = useState<Player[]>([]);
     const [selectedGame, setSelectedGame] = useState<string>("Wordle");
     const [gameConfig, setGameConfig] = useState<Record<string, any>>({});
+    const [session, setSession] = useState<GameSession | null>(null);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const { accessToken, isLoading } = useAuth();
     const socketRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<number | null>(null);
@@ -135,6 +137,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
                 } else if (data.type === "ROOM_CLOSED") {
                     console.warn("Room was closed by server:", data.payload.reason);
                     setRoomInfo(null);
+                } else if (data.type === "GAME_STARTED") {
+                    setSession(data.payload.session);
+                    setRoomInfo(data.payload.room);
+                } else if (data.type === "CHAT_MESSAGE") {
+                    setChatMessages(prev => [...prev, data.payload]);
+                } else if (data.type === "CHAT_HISTORY") {
+                    setChatMessages(data.payload);
+                } else if (data.type === "GAME_STOPPED") {
+                    setSession(null);
+                    setRoomInfo(data.payload.room);
                 }
             } catch (err) {
                 console.error("Failed to parse WS message", err);
@@ -164,7 +176,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     }, []);
 
     return (
-        <WebSocketContext.Provider value={{ socket: socketRef.current, status, roomInfo, players, selectedGame, gameConfig, setRoomInfo, setGameConfig, sendMessage }}>
+        <WebSocketContext.Provider value={{ socket: socketRef.current, status, roomInfo, players, selectedGame, gameConfig, session, chatMessages, setRoomInfo, setGameConfig, sendMessage }}>
             {children}
         </WebSocketContext.Provider>
     );

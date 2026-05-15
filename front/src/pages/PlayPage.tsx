@@ -5,6 +5,7 @@ import { useWebSocket } from "../websocket/useWebSocket";
 import { useAuth } from "../auth/AuthContext";
 import type { Room } from "../websocket/WebSocketContext";
 import "@/styles/pages/play.css";
+import GameSessionView from "../components/GameSessionView";
 
 const PlayPage = () => {
     const [activeTab, setActiveTab] = useState<"host" | "join">("host");
@@ -96,6 +97,17 @@ const PlayPage = () => {
     const selectedGameData = games.find(g => g.id === selectedGame);
     const canLaunch = selectedGameData && players && players.length >= selectedGameData.minPlayers && players.length <= selectedGameData.maxPlayers;
 
+    const handleLaunchGame = () => {
+        if (!isHost || !canLaunch) return;
+        sendMessage?.({
+            type: "START_GAME",
+            payload: {
+                gameId: selectedGame,
+                config: gameConfig
+            }
+        });
+    };
+
     const handleCreateRoom = async () => {
         setIsLoading(true);
         setError(null);
@@ -128,6 +140,10 @@ const PlayPage = () => {
     const isJoinDisabled = joinCode.length !== 6 || isLoading;
 
     if (roomInfo) {
+        if (roomInfo.status === "running") {
+            return <GameSessionView />;
+        }
+
         return (
             <div className="container" style={{ paddingTop: "80px", maxWidth: "1200px" }}>
                 <div className="lobby-header">
@@ -290,6 +306,7 @@ const PlayPage = () => {
                                         variant="primary" 
                                         className={`btn-full btn-lg ${canLaunch ? "pulse" : ""}`}
                                         disabled={!canLaunch}
+                                        onClick={handleLaunchGame}
                                     >
                                         Lancer la partie
                                     </Button>

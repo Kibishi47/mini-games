@@ -10,6 +10,16 @@ type service struct {
 	games []GameDefinition
 }
 
+func (s *service) ListGames(ctx context.Context) ([]GameDefinition, error) {
+	var enabledGames []GameDefinition
+	for _, g := range s.games {
+		if g.Enabled {
+			enabledGames = append(enabledGames, g)
+		}
+	}
+	return enabledGames, nil
+}
+
 func NewService() Service {
 	return &service{
 		games: []GameDefinition{
@@ -62,7 +72,7 @@ func NewService() Service {
 				Name:        "Between Lines",
 				Description: "Lisez entre les lignes pour gagner.",
 				Icon:        "📖",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  10,
 				Options: []ConfigOption{
@@ -81,7 +91,7 @@ func NewService() Service {
 				Name:        "Dames",
 				Description: "Le classique jeu de dames.",
 				Icon:        "🏁",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  2,
 				Options: []ConfigOption{
@@ -100,7 +110,7 @@ func NewService() Service {
 				Name:        "Échecs",
 				Description: "Battez vos amis aux échecs.",
 				Icon:        "♟️",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  2,
 				Options: []ConfigOption{
@@ -127,7 +137,7 @@ func NewService() Service {
 				Name:        "Puissance 4",
 				Description: "Alignez 4 jetons pour gagner.",
 				Icon:        "🔴",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  2,
 				Options: []ConfigOption{
@@ -154,7 +164,7 @@ func NewService() Service {
 				Name:        "Trivia",
 				Description: "Testez votre culture générale.",
 				Icon:        "❓",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  10,
 				Options: []ConfigOption{
@@ -197,7 +207,7 @@ func NewService() Service {
 				Name:        "Démineur",
 				Description: "Évitez toutes les mines.",
 				Icon:        "💣",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  1,
 				MaxPlayers:  10,
 				Options: []ConfigOption{
@@ -224,7 +234,7 @@ func NewService() Service {
 				Name:        "Loup-Garou",
 				Description: "Éliminez les loups avant qu'ils ne vous mangent.",
 				Icon:        "🐺",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  5,
 				MaxPlayers:  20,
 				Options: []ConfigOption{
@@ -263,7 +273,7 @@ func NewService() Service {
 				Name:        "Wavelength",
 				Description: "Êtes-vous sur la même longueur d'onde ?",
 				Icon:        "🌊",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  12,
 				Options: []ConfigOption{
@@ -282,7 +292,7 @@ func NewService() Service {
 				Name:        "Tapple",
 				Description: "Trouvez un mot avant que le temps ne s'écoule.",
 				Icon:        "🍎",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  2,
 				MaxPlayers:  8,
 				Options: []ConfigOption{
@@ -301,7 +311,7 @@ func NewService() Service {
 				Name:        "Bomb Droper",
 				Description: "Évitez les bombes qui tombent du ciel.",
 				Icon:        "💣",
-				Enabled:     true,
+				Enabled:     false,
 				MinPlayers:  1,
 				MaxPlayers:  10,
 				Options: []ConfigOption{
@@ -325,10 +335,6 @@ func NewService() Service {
 			},
 		},
 	}
-}
-
-func (s *service) ListGames(ctx context.Context) ([]GameDefinition, error) {
-	return s.games, nil
 }
 
 func intPtr(i int) *int {

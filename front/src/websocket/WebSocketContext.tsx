@@ -15,6 +15,23 @@ export interface Player {
     isHost: boolean;
 }
 
+export interface GameSession {
+    id: string;
+    roomId: string;
+    game: string;
+    config: Record<string, any>;
+    startedAt: string;
+    endedAt?: string;
+}
+
+export interface ChatMessage {
+    userId: string;
+    username: string;
+    text: string;
+    system?: boolean;
+    time: string;
+}
+
 export interface WebSocketContextType {
     socket: WebSocket | null;
     status: WebSocketStatus;
@@ -22,6 +39,8 @@ export interface WebSocketContextType {
     players: Player[];
     selectedGame: string;
     gameConfig: Record<string, any>;
+    session: GameSession | null;
+    chatMessages: ChatMessage[];
     setRoomInfo: (room: Room | null) => void;
     setGameConfig: (config: Record<string, any>) => void;
     sendMessage: (data: any) => void;

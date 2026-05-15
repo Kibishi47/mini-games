@@ -8,10 +8,12 @@ import (
 	"github.com/Kibishi47/mini-games/back/internal/domain/auth"
 	domaingame "github.com/Kibishi47/mini-games/back/internal/domain/game"
 	domainroom "github.com/Kibishi47/mini-games/back/internal/domain/room"
+	domainsession "github.com/Kibishi47/mini-games/back/internal/domain/session"
 	apihttp "github.com/Kibishi47/mini-games/back/internal/http"
 	"github.com/Kibishi47/mini-games/back/internal/infra/postgres"
 	auth2 "github.com/Kibishi47/mini-games/back/internal/infra/postgres/auth"
 	infraroom "github.com/Kibishi47/mini-games/back/internal/infra/postgres/room"
+	infrasession "github.com/Kibishi47/mini-games/back/internal/infra/postgres/session"
 	"github.com/Kibishi47/mini-games/back/internal/infra/postgres/user"
 	"github.com/Kibishi47/mini-games/back/internal/infra/redis"
 	"github.com/Kibishi47/mini-games/back/internal/ws"
@@ -44,8 +46,12 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	// user
 	userRepo := user.NewPostgresUserRepository(pool)
 
+	// session
+	sessionRepo := infrasession.NewPostgresSessionRepository(pool)
+	sessionService := domainsession.NewService(sessionRepo)
+
 	// ws
-	hub := ws.NewHub(redisClient, roomRepo, userRepo)
+	hub := ws.NewHub(redisClient, roomRepo, userRepo, sessionService)
 	go hub.Run()
 
 	// auth

@@ -6,8 +6,10 @@ import (
 	"fmt"
 
 	"github.com/Kibishi47/mini-games/back/internal/domain/room"
+	"github.com/Kibishi47/mini-games/back/internal/domain/session"
 	"github.com/Kibishi47/mini-games/back/internal/domain/user"
 	goredis "github.com/redis/go-redis/v9"
+	"time"
 )
 
 type Message struct {
@@ -24,20 +26,22 @@ type Hub struct {
 	clients       map[*Client]struct{}
 	clientsByRoom map[string]map[*Client]struct{}
 	redis         *goredis.Client
-	roomRepo      room.Repository
-	userRepo      user.Repository
+	roomRepo       room.Repository
+	userRepo       user.Repository
+	sessionService session.Service
 }
 
-func NewHub(redis *goredis.Client, roomRepo room.Repository, userRepo user.Repository) *Hub {
+func NewHub(redis *goredis.Client, roomRepo room.Repository, userRepo user.Repository, sessionService session.Service) *Hub {
 	return &Hub{
-		register:      make(chan *Client),
-		unregister:    make(chan *Client),
-		message:       make(chan *Message),
-		clients:       make(map[*Client]struct{}),
-		clientsByRoom: make(map[string]map[*Client]struct{}),
-		redis:         redis,
-		roomRepo:      roomRepo,
-		userRepo:      userRepo,
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		message:        make(chan *Message),
+		clients:        make(map[*Client]struct{}),
+		clientsByRoom:  make(map[string]map[*Client]struct{}),
+		redis:          redis,
+		roomRepo:       roomRepo,
+		userRepo:       userRepo,
+		sessionService: sessionService,
 	}
 }
 
@@ -52,6 +56,45 @@ func (h *Hub) Run() {
 			h.clientsByRoom[c.roomCode][c] = struct{}{}
 			h.updateRoomPlayers(c.roomCode)
 
+			// Send chat history to the newly connected client
+			ctx := context.Background()
+			chatKey := "room:" + c.roomCode + ":chat"
+			chatStrs, _ := h.redis.LRange(ctx, chatKey, 0, -1).Result()
+			
+			if len(chatStrs) > 0 {
+				var history []map[string]any
+				for _, str := range chatStrs {
+					var msg map[string]any
+					if err := json.Unmarshal([]byte(str), &msg); err == nil {
+						history = append(history, msg)
+					}
+				}
+				
+				historyMsg, _ := json.Marshal(map[string]any{
+					"type": "CHAT_HISTORY",
+					"payload": history,
+				})
+				
+				c.send <- historyMsg
+			}
+
+			// Send session info if game is running
+			if r, err := h.roomRepo.GetByCode(ctx, c.roomCode); err == nil && r != nil {
+				if r.Status == room.StatusRunning {
+					session, err := h.sessionService.GetActiveSessionByRoomID(ctx, r.ID)
+					if err == nil && session != nil {
+						sessionMsg, _ := json.Marshal(map[string]any{
+							"type": "GAME_STARTED",
+							"payload": map[string]any{
+								"session": session,
+								"room":    r,
+							},
+						})
+						c.send <- sessionMsg
+					}
+				}
+			}
+
 		case c := <-h.unregister:
 			roomCode := c.roomCode
 			h.removeClient(c)
@@ -64,6 +107,12 @@ func (h *Hub) Run() {
 				h.handleUpdateConfig(m)
 			} else if m.Type == "UPDATE_ROOM_MAX_PLAYERS" {
 				h.handleUpdateRoomMaxPlayers(m)
+			} else if m.Type == "START_GAME" {
+				h.handleStartGame(m)
+			} else if m.Type == "CHAT_MESSAGE" {
+				h.handleChatMessage(m)
+			} else if m.Type == "STOP_GAME" {
+				h.handleStopGame(m)
 			}
 		}
 	}
@@ -162,6 +211,129 @@ func (h *Hub) handleUpdateRoomMaxPlayers(m *Message) {
 	// Broadcast
 	msg, _ := json.Marshal(map[string]any{
 		"type": "ROOM_UPDATED",
+		"payload": map[string]any{
+			"room": r,
+		},
+	})
+
+	set := h.clientsByRoom[m.Client.roomCode]
+	for c := range set {
+		select {
+		case c.send <- msg:
+		default:
+			h.removeClient(c)
+		}
+	}
+}
+
+func (h *Hub) handleStartGame(m *Message) {
+	ctx := context.Background()
+	r, err := h.roomRepo.GetByCode(ctx, m.Client.roomCode)
+	if err != nil || r == nil {
+		return
+	}
+
+	// Only host can start
+	if m.Client.userID != r.HostID {
+		return
+	}
+
+	gameID, ok := m.Payload["gameId"].(string)
+	if !ok {
+		return
+	}
+
+	config, _ := m.Payload["config"].(map[string]any)
+
+	// Update Room status
+	h.roomRepo.UpdateStatus(ctx, r.ID, room.StatusRunning)
+	r.Status = room.StatusRunning
+
+	// Create Session
+	session, err := h.sessionService.CreateSession(ctx, r.ID, gameID, config)
+	if err != nil {
+		return
+	}
+
+	// Broadcast
+	msg, _ := json.Marshal(map[string]any{
+		"type": "GAME_STARTED",
+		"payload": map[string]any{
+			"session": session,
+			"room":    r,
+		},
+	})
+
+	set := h.clientsByRoom[m.Client.roomCode]
+	for c := range set {
+		select {
+		case c.send <- msg:
+		default:
+			h.removeClient(c)
+		}
+	}
+}
+
+func (h *Hub) handleChatMessage(m *Message) {
+	ctx := context.Background()
+	
+	// Save to Redis (room:<code/>:chat)
+	chatKey := "room:" + m.Client.roomCode + ":chat"
+	
+	chatMsg := map[string]any{
+		"userId":   m.Client.userID.String(),
+		"username": m.Client.username,
+		"text":     m.Payload["text"],
+		"system":   m.Payload["system"],
+		"time":     m.Payload["time"],
+	}
+	
+	chatBytes, _ := json.Marshal(chatMsg)
+	h.redis.RPush(ctx, chatKey, chatBytes)
+	h.redis.Expire(ctx, chatKey, 24*time.Hour) // Keep for 24h
+
+	// Broadcast
+	msg, _ := json.Marshal(map[string]any{
+		"type": "CHAT_MESSAGE",
+		"payload": chatMsg,
+	})
+
+	set := h.clientsByRoom[m.Client.roomCode]
+	for c := range set {
+		select {
+		case c.send <- msg:
+		default:
+			h.removeClient(c)
+		}
+	}
+}
+
+func (h *Hub) handleStopGame(m *Message) {
+	ctx := context.Background()
+	r, err := h.roomRepo.GetByCode(ctx, m.Client.roomCode)
+	if err != nil || r == nil {
+		return
+	}
+
+	// Only host can stop
+	if m.Client.userID != r.HostID {
+		return
+	}
+
+	// Get active session
+	session, err := h.sessionService.GetActiveSessionByRoomID(ctx, r.ID)
+	if err == nil && session != nil {
+		// End session
+		h.sessionService.EndSession(ctx, session.ID)
+	}
+
+	// Update Room status back to Lobby
+	h.roomRepo.UpdateStatus(ctx, r.ID, room.StatusLobby)
+	r.Status = room.StatusLobby
+
+	// Broadcast
+	msg, _ := json.Marshal(map[string]any{
+		"type": "GAME_STOPPED",
 		"payload": map[string]any{
 			"room": r,
 		},
