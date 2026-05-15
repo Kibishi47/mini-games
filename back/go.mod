@@ -1,6 +1,6 @@
 module github.com/Kibishi47/mini-games/back
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
