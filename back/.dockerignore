@@ -1,0 +1,10 @@
+.git
+.env
+.env.local
+vendor
+bin
+api
+tmp
+*.log
+docker-compose.yml
+Dockerfile
