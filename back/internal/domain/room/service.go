@@ -18,6 +18,7 @@ var (
 type Service interface {
 	CreateRoom(ctx context.Context, hostID uuid.UUID) (*Room, error)
 	JoinRoom(ctx context.Context, userID uuid.UUID, code string) (*Room, error)
+	GetByCode(ctx context.Context, code string) (*Room, error)
 }
 
 type service struct {
@@ -62,4 +63,8 @@ func (s *service) JoinRoom(ctx context.Context, userID uuid.UUID, code string) (
 	}
 
 	return r, nil
+}
+
+func (s *service) GetByCode(ctx context.Context, code string) (*Room, error) {
+	return s.repo.GetByCode(ctx, strings.ToUpper(code))
 }

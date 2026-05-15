@@ -53,6 +53,13 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify room exists
+	room, err := h.hub.roomRepo.GetByCode(r.Context(), roomCode)
+	if err != nil || room == nil {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

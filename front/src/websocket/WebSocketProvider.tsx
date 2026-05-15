@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { WebSocketContext } from "./WebSocketContext";
 import type { WebSocketStatus, Room, Player } from "./WebSocketContext";
 import { useAuth } from "@/auth/AuthContext";
+import { http } from "@/lib/api/http";
 
 interface WebSocketProviderProps {
     children: ReactNode;
@@ -85,16 +86,31 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
             setStatus("connected");
         };
 
-        socket.onclose = () => {
+        socket.onclose = async () => {
             console.log("WebSocket disconnected");
             setStatus("disconnected");
             setPlayers([]);
 
             if (socketRef.current === socket) {
                 socketRef.current = null;
-                // Only reconnect if we still have a room and a token
-                if (accessToken && roomInfo) {
-                    reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_INTERVAL);
+                
+                // If we still have a roomInfo, check if it's still valid before retrying
+                if (roomInfo) {
+                    try {
+                        await http(`/rooms/${roomInfo.code}`);
+                        // If we reach here, room exists, we can retry
+                        if (accessToken && roomInfo) {
+                            reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_INTERVAL);
+                        }
+                    } catch (err: any) {
+                        if (err.status === 404) {
+                            console.warn("Room no longer exists, clearing state.");
+                            setRoomInfo(null);
+                        } else {
+                            // Other error, maybe server is down, still retry
+                            reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_INTERVAL);
+                        }
+                    }
                 }
             }
         };
@@ -111,6 +127,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
                     setPlayers(data.payload.players);
                 } else if (data.type === "GAME_SELECTED") {
                     setSelectedGame(data.payload.gameId);
+                } else if (data.type === "ROOM_CLOSED") {
+                    console.warn("Room was closed by server:", data.payload.reason);
+                    setRoomInfo(null);
                 }
             } catch (err) {
                 console.error("Failed to parse WS message", err);

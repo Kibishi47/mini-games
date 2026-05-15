@@ -123,8 +123,28 @@ func (h *Hub) updateRoomPlayers(roomCode string) {
 
 	ctx := context.Background()
 	r, err := h.roomRepo.GetByCode(ctx, roomCode)
-	if err != nil {
-		fmt.Printf("Error getting room %s: %v\n", roomCode, err)
+	if err != nil || r == nil {
+		fmt.Printf("Room %s not found or deleted, kicking all players\n", roomCode)
+		
+		msg, _ := json.Marshal(map[string]any{
+			"type": "ROOM_CLOSED",
+			"payload": map[string]any{
+				"reason": "Le salon a été fermé ou supprimé.",
+			},
+		})
+
+		set := h.clientsByRoom[roomCode]
+		for c := range set {
+			c.send <- msg
+			// We don't removeClient(c) immediately to let the message be sent
+			// The writePump will close the connection when the send channel is closed or on error
+		}
+		
+		// Wait a bit or let unregister handle it? 
+		// Actually, let's just remove them.
+		for c := range set {
+			h.removeClient(c)
+		}
 		return
 	}
 
