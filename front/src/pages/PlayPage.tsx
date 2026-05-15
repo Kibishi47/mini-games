@@ -78,9 +78,23 @@ const PlayPage = () => {
     };
 
     const handleJoinCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-        setJoinCode(value);
+        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (val.length <= 6) setJoinCode(val);
     };
+
+    const handleUpdateMaxPlayers = (maxPlayers: number) => {
+        if (!isHost) return;
+        sendMessage?.({
+            type: "UPDATE_ROOM_MAX_PLAYERS",
+            payload: { maxPlayers }
+        });
+        if (setRoomInfo && roomInfo) {
+            setRoomInfo({ ...roomInfo, maxPlayers });
+        }
+    };
+
+    const selectedGameData = games.find(g => g.id === selectedGame);
+    const canLaunch = selectedGameData && players && players.length >= selectedGameData.minPlayers && players.length <= selectedGameData.maxPlayers;
 
     const handleCreateRoom = async () => {
         setIsLoading(true);
@@ -232,7 +246,28 @@ const PlayPage = () => {
 
                     {/* Colonne Droite: Joueurs */}
                     <div className="lobby-section players-section">
-                        <h2 className="section-title">Joueurs ({players?.length || 0})</h2>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", borderBottom: "1px solid rgba(255, 255, 255, 0.1)", paddingBottom: "1rem" }}>
+                            <h2 className="section-title" style={{ margin: 0, border: "none", padding: 0 }}>
+                                Joueurs ({players?.length || 0}/{roomInfo.maxPlayers || 2})
+                            </h2>
+                            {isHost && (
+                                <select 
+                                    value={roomInfo.maxPlayers || 2} 
+                                    onChange={(e) => handleUpdateMaxPlayers(parseInt(e.target.value))}
+                                    style={{
+                                        background: "rgba(0,0,0,0.3)", 
+                                        color: "white", 
+                                        border: "1px solid var(--color-primary)", 
+                                        borderRadius: "6px", 
+                                        padding: "0.2rem 0.5rem"
+                                    }}
+                                >
+                                    {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20].map(n => (
+                                        <option key={n} value={n}>{n} max</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
                         <div className="players-list">
                             {players?.map((p, index) => (
                                 <div key={p.username + index} className="player-card">
@@ -250,9 +285,20 @@ const PlayPage = () => {
 
                         <div className="lobby-actions">
                             {isHost ? (
-                                <Button variant="primary" className="btn-full btn-lg pulse">
-                                    Lancer la partie
-                                </Button>
+                                <>
+                                    <Button 
+                                        variant="primary" 
+                                        className={`btn-full btn-lg ${canLaunch ? "pulse" : ""}`}
+                                        disabled={!canLaunch}
+                                    >
+                                        Lancer la partie
+                                    </Button>
+                                    {!canLaunch && selectedGameData && (
+                                        <div style={{ color: "#ff4757", fontSize: "0.85rem", marginTop: "0.5rem", textAlign: "center" }}>
+                                            {selectedGameData.name} requiert de {selectedGameData.minPlayers} à {selectedGameData.maxPlayers} joueurs.
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <div className="ready-status">
                                     Préparez-vous, la partie va bientôt commencer !

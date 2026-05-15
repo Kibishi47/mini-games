@@ -19,6 +19,8 @@ func NewService() Service {
 				Description: "Devinez le mot secret en 6 essais.",
 				Icon:        "📝",
 				Enabled:     true,
+				MinPlayers:  1,
+				MaxPlayers:  10,
 				Options: []ConfigOption{
 					{
 						ID:           "wordLength",
@@ -61,6 +63,8 @@ func NewService() Service {
 				Description: "Lisez entre les lignes pour gagner.",
 				Icon:        "📖",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  10,
 				Options: []ConfigOption{
 					{
 						ID:           "rounds",
@@ -78,6 +82,8 @@ func NewService() Service {
 				Description: "Le classique jeu de dames.",
 				Icon:        "🏁",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  2,
 				Options: []ConfigOption{
 					{
 						ID:           "turnTime",
@@ -95,6 +101,8 @@ func NewService() Service {
 				Description: "Battez vos amis aux échecs.",
 				Icon:        "♟️",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  2,
 				Options: []ConfigOption{
 					{
 						ID:           "timeControl",
@@ -120,6 +128,8 @@ func NewService() Service {
 				Description: "Alignez 4 jetons pour gagner.",
 				Icon:        "🔴",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  2,
 				Options: []ConfigOption{
 					{
 						ID:           "winCondition",
@@ -145,6 +155,8 @@ func NewService() Service {
 				Description: "Testez votre culture générale.",
 				Icon:        "❓",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  10,
 				Options: []ConfigOption{
 					{
 						ID:           "questionCount",
@@ -176,6 +188,8 @@ func NewService() Service {
 				Description: "Ne vous mordez pas la queue !",
 				Icon:        "🐍",
 				Enabled:     false, // Exemple de maintenance
+				MinPlayers:  1,
+				MaxPlayers:  10,
 				Options:     []ConfigOption{},
 			},
 			{
@@ -184,6 +198,8 @@ func NewService() Service {
 				Description: "Évitez toutes les mines.",
 				Icon:        "💣",
 				Enabled:     true,
+				MinPlayers:  1,
+				MaxPlayers:  10,
 				Options: []ConfigOption{
 					{
 						ID:           "gridSize",
@@ -209,6 +225,8 @@ func NewService() Service {
 				Description: "Éliminez les loups avant qu'ils ne vous mangent.",
 				Icon:        "🐺",
 				Enabled:     true,
+				MinPlayers:  5,
+				MaxPlayers:  20,
 				Options: []ConfigOption{
 					{
 						ID:           "werewolfCount",
@@ -246,6 +264,8 @@ func NewService() Service {
 				Description: "Êtes-vous sur la même longueur d'onde ?",
 				Icon:        "🌊",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  12,
 				Options: []ConfigOption{
 					{
 						ID:           "targetPoints",
@@ -263,6 +283,8 @@ func NewService() Service {
 				Description: "Trouvez un mot avant que le temps ne s'écoule.",
 				Icon:        "🍎",
 				Enabled:     true,
+				MinPlayers:  2,
+				MaxPlayers:  8,
 				Options: []ConfigOption{
 					{
 						ID:           "timeLimit",
@@ -280,6 +302,8 @@ func NewService() Service {
 				Description: "Évitez les bombes qui tombent du ciel.",
 				Icon:        "💣",
 				Enabled:     true,
+				MinPlayers:  1,
+				MaxPlayers:  10,
 				Options: []ConfigOption{
 					{
 						ID:           "lives",

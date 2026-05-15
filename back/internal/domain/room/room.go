@@ -27,4 +27,5 @@ type Room struct {
 type Repository interface {
 	Create(ctx context.Context, room *Room) error
 	GetByCode(ctx context.Context, code string) (*Room, error)
+	UpdateMaxPlayers(ctx context.Context, id uuid.UUID, maxPlayers int) error
 }

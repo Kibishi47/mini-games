@@ -130,6 +130,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
                     setSelectedGame(data.payload.gameId);
                 } else if (data.type === "CONFIG_UPDATED") {
                     setGameConfig(data.payload);
+                } else if (data.type === "ROOM_UPDATED") {
+                    setRoomInfo(data.payload.room);
                 } else if (data.type === "ROOM_CLOSED") {
                     console.warn("Room was closed by server:", data.payload.reason);
                     setRoomInfo(null);

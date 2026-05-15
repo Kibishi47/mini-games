@@ -25,5 +25,7 @@ type GameDefinition struct {
 	Description string         `json:"description"`
 	Icon        string         `json:"icon"`
 	Enabled     bool           `json:"enabled"`
+	MinPlayers  int            `json:"minPlayers"`
+	MaxPlayers  int            `json:"maxPlayers"`
 	Options     []ConfigOption `json:"options"`
 }

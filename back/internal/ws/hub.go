@@ -62,6 +62,8 @@ func (h *Hub) Run() {
 				h.handleSelectGame(m)
 			} else if m.Type == "UPDATE_CONFIG" {
 				h.handleUpdateConfig(m)
+			} else if m.Type == "UPDATE_ROOM_MAX_PLAYERS" {
+				h.handleUpdateRoomMaxPlayers(m)
 			}
 		}
 	}
@@ -118,6 +120,51 @@ func (h *Hub) handleUpdateConfig(m *Message) {
 	msg, _ := json.Marshal(map[string]any{
 		"type": "CONFIG_UPDATED",
 		"payload": m.Payload,
+	})
+
+	set := h.clientsByRoom[m.Client.roomCode]
+	for c := range set {
+		select {
+		case c.send <- msg:
+		default:
+			h.removeClient(c)
+		}
+	}
+}
+
+func (h *Hub) handleUpdateRoomMaxPlayers(m *Message) {
+	ctx := context.Background()
+	r, err := h.roomRepo.GetByCode(ctx, m.Client.roomCode)
+	if err != nil || r == nil {
+		return
+	}
+
+	// Only host can update
+	if m.Client.userID != r.HostID {
+		return
+	}
+
+	maxPlayersFloat, ok := m.Payload["maxPlayers"].(float64)
+	if !ok {
+		return
+	}
+	maxPlayers := int(maxPlayersFloat)
+
+	// Update in DB
+	err = h.roomRepo.UpdateMaxPlayers(ctx, r.ID, maxPlayers)
+	if err != nil {
+		return
+	}
+
+	// Also update the local room cache for future reference
+	r.MaxPlayers = maxPlayers
+
+	// Broadcast
+	msg, _ := json.Marshal(map[string]any{
+		"type": "ROOM_UPDATED",
+		"payload": map[string]any{
+			"room": r,
+		},
 	})
 
 	set := h.clientsByRoom[m.Client.roomCode]

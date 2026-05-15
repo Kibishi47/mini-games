@@ -60,6 +60,16 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check max players limit
+	players, _ := h.hub.redis.HGetAll(r.Context(), "room:"+roomCode+":players").Result()
+	if len(players) >= room.MaxPlayers {
+		// Allow if the user is already in the room (reconnecting)
+		if _, exists := players[userID.String()]; !exists {
+			http.Error(w, "room is full", http.StatusForbidden)
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

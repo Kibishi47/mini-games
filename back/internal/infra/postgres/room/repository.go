@@ -4,6 +4,7 @@ import (
 	"context"
 
 	domainroom "github.com/Kibishi47/mini-games/back/internal/domain/room"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -62,4 +63,15 @@ func (r *postgresRoomRepository) GetByCode(ctx context.Context, code string) (*d
 	}
 
 	return &room, nil
+}
+
+func (r *postgresRoomRepository) UpdateMaxPlayers(ctx context.Context, id uuid.UUID, maxPlayers int) error {
+	query := `
+		UPDATE room
+		SET max_players = $1
+		WHERE id = $2
+	`
+
+	_, err := r.pool.Exec(ctx, query, maxPlayers, id)
+	return err
 }
