@@ -113,6 +113,8 @@ func (h *Hub) Run() {
 				h.handleChatMessage(m)
 			} else if m.Type == "STOP_GAME" {
 				h.handleStopGame(m)
+			} else if m.Type == "KICK_PLAYER" {
+				h.handleKickPlayer(m)
 			}
 		}
 	}
@@ -349,6 +351,57 @@ func (h *Hub) handleStopGame(m *Message) {
 	}
 }
 
+func (h *Hub) handleKickPlayer(m *Message) {
+	ctx := context.Background()
+	r, err := h.roomRepo.GetByCode(ctx, m.Client.roomCode)
+	if err != nil || r == nil {
+		return
+	}
+
+	// Only host can kick
+	if m.Client.userID != r.HostID {
+		return
+	}
+
+	targetUsername, ok := m.Payload["username"].(string)
+	if !ok {
+		return
+	}
+
+	// Find the client to kick
+	set := h.clientsByRoom[m.Client.roomCode]
+	var targetClient *Client
+	for c := range set {
+		if c.username == targetUsername {
+			// Cannot kick yourself
+			if c.userID == r.HostID {
+				return
+			}
+			targetClient = c
+			break
+		}
+	}
+
+	if targetClient != nil {
+		// Send a kick message to the target
+		kickMsg, _ := json.Marshal(map[string]any{
+			"type": "KICKED",
+			"payload": map[string]any{
+				"reason": "Vous avez été exclu du salon par l'hôte.",
+			},
+		})
+		targetClient.send <- kickMsg
+		
+		// REMOVE FROM REDIS FIRST
+		redisKey := fmt.Sprintf("room:%s:players", m.Client.roomCode)
+		h.redis.HDel(ctx, redisKey, targetClient.userID.String())
+
+		// Then remove from Hub
+		h.removeClient(targetClient)
+		h.updateRoomPlayers(m.Client.roomCode)
+	}
+}
+
 func (h *Hub) removeClient(c *Client) {
 	if _, ok := h.clients[c]; !ok {
 		return
@@ -422,6 +475,23 @@ func (h *Hub) updateRoomPlayers(roomCode string) {
 			c.username = nameToShow
 		}
 
+		// SOURCE OF TRUTH: Check if user ID is in Redis Hash
+		redisKey := fmt.Sprintf("room:%s:players", roomCode)
+		exists, _ := h.redis.HExists(ctx, redisKey, c.userID.String()).Result()
+		
+		if !exists {
+			// User was removed from Redis, kick them from WebSocket
+			kickMsg, _ := json.Marshal(map[string]any{
+				"type": "KICKED",
+				"payload": map[string]any{
+					"reason": "Vous n'êtes plus dans ce salon.",
+				},
+			})
+			c.send <- kickMsg
+			h.removeClient(c)
+			continue
+		}
+
 		if _, exists := playersMap[nameToShow]; !exists {
 			playersMap[nameToShow] = PlayerInfo{
 				Username: nameToShow,
@@ -436,15 +506,7 @@ func (h *Hub) updateRoomPlayers(roomCode string) {
 		playersList = append(playersList, playersMap[name])
 	}
 
-	// 2. Store in Redis (list of usernames for now to keep it compatible)
-	redisKey := fmt.Sprintf("room:%s:players", roomCode)
-	
-	h.redis.Del(ctx, redisKey)
-	if len(usernames) > 0 {
-		h.redis.SAdd(ctx, redisKey, usernames)
-	}
-
-	// 3. Broadcast to all clients in the room
+	// 3. Broadcast to all clients in the room (No more Redis overwrite here)
 	msg, _ := json.Marshal(map[string]any{
 		"type": "PLAYER_LIST",
 		"payload": map[string]any{

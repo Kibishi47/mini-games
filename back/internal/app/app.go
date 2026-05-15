@@ -60,7 +60,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	authService := auth.NewService(tokenRepo, identityRepo, userRepo, cfg.AuthTokenTTL)
 
 	// room service
-	roomService := domainroom.NewService(roomRepo)
+	roomService := domainroom.NewService(roomRepo, userRepo, redisClient)
 
 	// game service
 	gameService := domaingame.NewService()

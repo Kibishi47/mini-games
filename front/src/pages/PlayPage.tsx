@@ -295,6 +295,26 @@ const PlayPage = () => {
                                         {p.isHost && <span className="host-crown" title="Hôte du salon"> 👑</span>}
                                     </span>
                                     {p.username === user?.username && <span className="you-badge">VOUS</span>}
+                                    {isHost && !p.isHost && (
+                                        <button 
+                                            className="kick-button"
+                                            onClick={() => sendMessage?.({ type: "KICK_PLAYER", payload: { username: p.username } })}
+                                            title="Exclure ce joueur"
+                                            style={{
+                                                marginLeft: "auto",
+                                                background: "rgba(255, 71, 87, 0.2)",
+                                                border: "1px solid rgba(255, 71, 87, 0.4)",
+                                                color: "#ff4757",
+                                                borderRadius: "4px",
+                                                padding: "0.1rem 0.4rem",
+                                                fontSize: "0.7rem",
+                                                cursor: "pointer",
+                                                transition: "all 0.2s"
+                                            }}
+                                        >
+                                            KICK
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>

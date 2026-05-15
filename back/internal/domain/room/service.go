@@ -5,9 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/Kibishi47/mini-games/back/internal/domain/user"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 var (
@@ -22,11 +25,13 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo     Repository
+	userRepo user.Repository
+	redis    *goredis.Client
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, userRepo user.Repository, redis *goredis.Client) Service {
+	return &service{repo: repo, userRepo: userRepo, redis: redis}
 }
 
 func generateCode() string {
@@ -49,6 +54,17 @@ func (s *service) CreateRoom(ctx context.Context, hostID uuid.UUID) (*Room, erro
 		return nil, err
 	}
 
+	// Host joins the room in Redis (Hash: userID -> username)
+	u, err := s.userRepo.GetByID(ctx, hostID)
+	if err == nil && u != nil {
+		name := u.Username
+		if u.DisplayName != nil && *u.DisplayName != "" {
+			name = *u.DisplayName
+		}
+		redisKey := fmt.Sprintf("room:%s:players", r.Code)
+		s.redis.HSet(ctx, redisKey, u.ID.String(), name)
+	}
+
 	return r, nil
 }
 
@@ -61,6 +77,21 @@ func (s *service) JoinRoom(ctx context.Context, userID uuid.UUID, code string) (
 	if r.Status != StatusLobby {
 		return nil, ErrRoomNotLobby
 	}
+
+	// Fetch user to get username
+	u, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	name := u.Username
+	if u.DisplayName != nil && *u.DisplayName != "" {
+		name = *u.DisplayName
+	}
+
+	// Add to Redis (Hash: userID -> username)
+	redisKey := fmt.Sprintf("room:%s:players", r.Code)
+	s.redis.HSet(ctx, redisKey, u.ID.String(), name)
 
 	return r, nil
 }

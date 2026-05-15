@@ -26,6 +26,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     const { accessToken, isLoading } = useAuth();
     const socketRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<number | null>(null);
+    const isKickedRef = useRef<boolean>(false);
 
     const setRoomInfo = useCallback((room: Room | null) => {
         setRoomInfoState(room);
@@ -38,6 +39,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
     const connect = useCallback(() => {
         if (isLoading) return;
+        if (isKickedRef.current) return;
 
         // Reset if no room info
         if (!roomInfo) {
@@ -83,20 +85,32 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
 
         const socket = new WebSocket(finalUrl);
         socketRef.current = socket;
+        let wasConnected = false;
 
         socket.onopen = () => {
             console.log("WebSocket connected to room:", roomInfo.code);
             setStatus("connected");
+            wasConnected = true;
         };
 
-        socket.onclose = async () => {
-            console.log("WebSocket disconnected");
+        socket.onclose = async (event) => {
+            console.log("WebSocket disconnected", event.code, event.reason);
             setStatus("disconnected");
             setPlayers([]);
 
             if (socketRef.current === socket) {
                 socketRef.current = null;
                 
+                // CIRCUIT BREAKER: If it never opened, it's likely a 403 or auth error
+                if (!wasConnected) {
+                    console.warn("WebSocket handshake failed. Stopping reconnection.");
+                    isKickedRef.current = true;
+                    setRoomInfo(null);
+                    alert("Votre session a expiré ou l'accès au salon est refusé.");
+                    window.location.href = "/";
+                    return;
+                }
+
                 // If we still have a roomInfo, check if it's still valid before retrying
                 if (roomInfo) {
                     try {
@@ -105,10 +119,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
                         if (accessToken && roomInfo) {
                             reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_INTERVAL);
                         }
-                    } catch (err: any) {
-                        if (err.status === 404) {
-                            console.warn("Room no longer exists, clearing state.");
+                        } catch (err: any) {
+                        if (err.status === 404 || err.status === 403 || err.status === 401) {
+                            console.warn("Room access lost or room no longer exists, clearing state.", err.status);
+                            isKickedRef.current = true;
                             setRoomInfo(null);
+                            if (err.status === 403) {
+                                alert("Votre session a expiré ou vous avez été retiré du salon.");
+                                window.location.href = "/";
+                            }
                         } else {
                             // Other error, maybe server is down, still retry
                             reconnectTimeoutRef.current = window.setTimeout(connect, RECONNECT_INTERVAL);
@@ -147,6 +166,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
                 } else if (data.type === "GAME_STOPPED") {
                     setSession(null);
                     setRoomInfo(data.payload.room);
+                } else if (data.type === "KICKED") {
+                    console.warn("You were kicked from the room:", data.payload.reason);
+                    isKickedRef.current = true;
+                    setRoomInfo(null);
+                    alert(data.payload.reason);
+                    window.location.href = "/";
                 }
             } catch (err) {
                 console.error("Failed to parse WS message", err);

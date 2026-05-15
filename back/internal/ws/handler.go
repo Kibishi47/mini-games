@@ -60,14 +60,19 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check max players limit
-	players, _ := h.hub.redis.HGetAll(r.Context(), "room:"+roomCode+":players").Result()
-	if len(players) >= room.MaxPlayers {
-		// Allow if the user is already in the room (reconnecting)
-		if _, exists := players[userID.String()]; !exists {
-			http.Error(w, "room is full", http.StatusForbidden)
-			return
-		}
+	// Verify user is in Redis for this room (source of truth)
+	redisKey := "room:" + roomCode + ":players"
+	inRedis, _ := h.hub.redis.HExists(r.Context(), redisKey, userID.String()).Result()
+	if !inRedis {
+		http.Error(w, "you are not a member of this room", http.StatusForbidden)
+		return
+	}
+
+	// Check max players limit (based on Redis Hash)
+	playersCount, _ := h.hub.redis.HLen(r.Context(), redisKey).Result()
+	if int(playersCount) > room.MaxPlayers {
+		http.Error(w, "room is full", http.StatusForbidden)
+		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
