@@ -92,6 +92,33 @@ func (h *Hub) Run() {
 						})
 						c.send <- sessionMsg
 					}
+				} else {
+					// Send current game selection and config if in lobby
+					gameKey := "room:" + c.roomCode + ":game"
+					configKey := "room:" + c.roomCode + ":config"
+					
+					selectedGame, _ := h.redis.Get(ctx, gameKey).Result()
+					if selectedGame != "" {
+						msg, _ := json.Marshal(map[string]any{
+							"type": "GAME_SELECTED",
+							"payload": map[string]any{
+								"gameId": selectedGame,
+							},
+						})
+						c.send <- msg
+					}
+
+					configStr, _ := h.redis.Get(ctx, configKey).Result()
+					if configStr != "" {
+						var config map[string]any
+						if err := json.Unmarshal([]byte(configStr), &config); err == nil {
+							msg, _ := json.Marshal(map[string]any{
+								"type": "CONFIG_UPDATED",
+								"payload": config,
+							})
+							c.send <- msg
+						}
+					}
 				}
 			}
 
@@ -137,6 +164,10 @@ func (h *Hub) handleSelectGame(m *Message) {
 		return
 	}
 
+	// Persist in Redis
+	gameKey := "room:" + m.Client.roomCode + ":game"
+	h.redis.Set(ctx, gameKey, gameID, 24*time.Hour)
+
 	// Broadcast to everyone in the room
 	msg, _ := json.Marshal(map[string]any{
 		"type": "GAME_SELECTED",
@@ -166,6 +197,11 @@ func (h *Hub) handleUpdateConfig(m *Message) {
 	if m.Client.userID != r.HostID {
 		return
 	}
+
+	// Persist in Redis
+	configKey := "room:" + m.Client.roomCode + ":config"
+	configBytes, _ := json.Marshal(m.Payload)
+	h.redis.Set(ctx, configKey, configBytes, 24*time.Hour)
 
 	// Broadcast to everyone in the room
 	msg, _ := json.Marshal(map[string]any{
