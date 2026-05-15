@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Button from "../components/common/Button";
 import { http } from "../lib/api/http";
 import { useWebSocket } from "../websocket/useWebSocket";
@@ -6,29 +6,32 @@ import { useAuth } from "../auth/AuthContext";
 import type { Room } from "../websocket/WebSocketContext";
 import "@/styles/pages/play.css";
 
-const GAMES = [
-    { id: "Wordle", name: "Wordle", icon: "📝", description: "Devinez le mot secret en 6 essais." },
-    { id: "BetweenLines", name: "Between Lines", icon: "📖", description: "Lisez entre les lignes pour gagner." },
-    { id: "Checkers", name: "Dames", icon: "🏁", description: "Le classique jeu de dames." },
-    { id: "Chess", name: "Échecs", icon: "♟️", description: "Battez vos amis aux échecs." },
-    { id: "FourInARow", name: "Puissance 4", icon: "🔴", description: "Alignez 4 jetons pour gagner." },
-    { id: "Trivia", name: "Trivia", icon: "❓", description: "Testez votre culture générale." },
-    { id: "Snake", name: "Snake", icon: "🐍", description: "Ne vous mordez pas la queue !" },
-    { id: "Minesweeper", name: "Démineur", icon: "💣", description: "Évitez toutes les mines." },
-];
-
 const PlayPage = () => {
     const [activeTab, setActiveTab] = useState<"host" | "join">("host");
     const [joinCode, setJoinCode] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showCopySuccess, setShowCopySuccess] = useState(false);
+    const [games, setGames] = useState<any[]>([]);
     
     const { user } = useAuth();
     const ws = useWebSocket();
-    const { roomInfo, setRoomInfo, players, status, selectedGame, sendMessage } = ws || {};
+    const { roomInfo, setRoomInfo, players, status, selectedGame, gameConfig, setGameConfig, sendMessage } = ws || {};
 
     const isHost = roomInfo && user && roomInfo.hostId === user.id;
+
+    // Fetch games from backend
+    useEffect(() => {
+        const fetchGames = async () => {
+            try {
+                const data = await http<any[]>("/games");
+                setGames(data);
+            } catch (err) {
+                console.error("Failed to fetch games", err);
+            }
+        };
+        fetchGames();
+    }, []);
 
     const handleCopyCode = () => {
         if (!roomInfo) return;
@@ -38,8 +41,40 @@ const PlayPage = () => {
     };
 
     const handleSelectGame = (gameId: string) => {
-        if (!isHost || !sendMessage) return;
-        sendMessage({ type: "SELECT_GAME", payload: { gameId } });
+        if (!isHost) return;
+        
+        const game = games.find(g => g.id === gameId);
+        let initialConfig: Record<string, any> = {};
+        if (game) {
+            game.options?.forEach((opt: any) => {
+                initialConfig[opt.id] = opt.defaultValue;
+            });
+        }
+
+        sendMessage?.({
+            type: "SELECT_GAME",
+            payload: { gameId }
+        });
+
+        // Also send initial config
+        if (Object.keys(initialConfig).length > 0) {
+            sendMessage?.({
+                type: "UPDATE_CONFIG",
+                payload: initialConfig
+            });
+        }
+    };
+
+    const handleConfigChange = (id: string, value: any) => {
+        if (!isHost) return;
+        
+        const newConfig = { ...gameConfig, [id]: value };
+        sendMessage?.({
+            type: "UPDATE_CONFIG",
+            payload: newConfig
+        });
+        // We update locally too for immediate feedback
+        setGameConfig?.(newConfig);
     };
 
     const handleJoinCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,33 +135,97 @@ const PlayPage = () => {
                         </h2>
                         
                         {isHost ? (
-                            <div className="games-list">
-                                {GAMES.map(game => (
-                                    <div 
-                                        key={game.id} 
-                                        className={`game-item ${selectedGame === game.id ? "selected" : ""}`}
-                                        onClick={() => handleSelectGame(game.id)}
-                                    >
-                                        <span className="game-icon">{game.icon}</span>
-                                        <div className="game-info">
-                                            <span className="game-name">{game.name}</span>
-                                            <span className="game-desc">{game.description}</span>
+                            <div className="games-config-wrapper">
+                                <div className="games-list">
+                                    {games.map(game => (
+                                        <div 
+                                            key={game.id} 
+                                            className={`game-item ${selectedGame === game.id ? "selected" : ""} ${!game.enabled ? "disabled" : ""}`}
+                                            onClick={() => game.enabled && handleSelectGame(game.id)}
+                                        >
+                                            <span className="game-icon">{game.icon}</span>
+                                            <div className="game-info">
+                                                <span className="game-name">
+                                                    {game.name}
+                                                    {!game.enabled && <span className="maintenance-badge">Maintenance</span>}
+                                                </span>
+                                                <span className="game-desc">{game.description}</span>
+                                            </div>
+                                            {selectedGame === game.id && <div className="selected-check">✓</div>}
                                         </div>
-                                        {selectedGame === game.id && <div className="selected-check">✓</div>}
+                                    ))}
+                                </div>
+
+                                {selectedGame && games.find(g => g.id === selectedGame)?.options?.length > 0 && (
+                                    <div className="game-options-panel">
+                                        <h3 className="options-title">Options de {games.find(g => g.id === selectedGame)?.name}</h3>
+                                        <div className="options-grid">
+                                            {games.find(g => g.id === selectedGame)?.options.map((opt: any) => (
+                                                <div key={opt.id} className="option-field">
+                                                    <label>{opt.label}</label>
+                                                    {opt.type === "range" || opt.type === "number" ? (
+                                                        <div className="range-input-wrapper">
+                                                            <input 
+                                                                type={opt.type === "range" ? "range" : "number"}
+                                                                min={opt.min}
+                                                                max={opt.max}
+                                                                step={opt.step || 1}
+                                                                value={gameConfig?.[opt.id] ?? opt.defaultValue}
+                                                                disabled={!isHost}
+                                                                onChange={(e) => handleConfigChange(opt.id, Number(e.target.value))}
+                                                            />
+                                                            <span className="range-value">{gameConfig?.[opt.id] ?? opt.defaultValue}</span>
+                                                        </div>
+                                                    ) : opt.type === "boolean" ? (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={gameConfig?.[opt.id] ?? opt.defaultValue}
+                                                            disabled={!isHost}
+                                                            onChange={(e) => handleConfigChange(opt.id, e.target.checked)}
+                                                        />
+                                                    ) : (
+                                                        <input 
+                                                            type="text" 
+                                                            value={gameConfig?.[opt.id] ?? opt.defaultValue}
+                                                            disabled={!isHost}
+                                                            onChange={(e) => handleConfigChange(opt.id, e.target.value)}
+                                                        />
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                ))}
+                                )}
                             </div>
                         ) : (
-                            <div className="selected-game-display">
-                                <div className="game-hero">
-                                    <span className="hero-icon">{GAMES.find(g => g.id === selectedGame)?.icon}</span>
-                                    <h3>{GAMES.find(g => g.id === selectedGame)?.name}</h3>
-                                    <p>{GAMES.find(g => g.id === selectedGame)?.description}</p>
+                            <div className="selected-game-display-wrapper">
+                                <div className="selected-game-display">
+                                    <div className="game-hero">
+                                        <span className="hero-icon">{games.find(g => g.id === selectedGame)?.icon}</span>
+                                        <h3>{games.find(g => g.id === selectedGame)?.name}</h3>
+                                        <p>{games.find(g => g.id === selectedGame)?.description}</p>
+                                    </div>
+                                    <div className="waiting-host">
+                                        <div className="loader-mini"></div>
+                                        <span>En attente de l'hôte...</span>
+                                    </div>
                                 </div>
-                                <div className="waiting-host">
-                                    <div className="loader-mini"></div>
-                                    <span>En attente de l'hôte...</span>
-                                </div>
+                                
+                                {selectedGame && games.find(g => g.id === selectedGame)?.options?.length > 0 && (
+                                    <div className="game-options-panel readonly">
+                                        <h3 className="options-title">Configuration</h3>
+                                        <div className="options-grid">
+                                            {games.find(g => g.id === selectedGame)?.options.map((opt: any) => (
+                                                <div key={opt.id} className="option-field">
+                                                    <label>{opt.label}</label>
+                                                    <div className="readonly-value">
+                                                        {opt.type === "boolean" ? (gameConfig?.[opt.id] ? "Oui" : "Non") : (gameConfig?.[opt.id] ?? opt.defaultValue)}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

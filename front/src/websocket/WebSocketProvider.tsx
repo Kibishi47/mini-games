@@ -20,6 +20,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     });
     const [players, setPlayers] = useState<Player[]>([]);
     const [selectedGame, setSelectedGame] = useState<string>("Wordle");
+    const [gameConfig, setGameConfig] = useState<Record<string, any>>({});
     const { accessToken, isLoading } = useAuth();
     const socketRef = useRef<WebSocket | null>(null);
     const reconnectTimeoutRef = useRef<number | null>(null);
@@ -127,6 +128,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
                     setPlayers(data.payload.players);
                 } else if (data.type === "GAME_SELECTED") {
                     setSelectedGame(data.payload.gameId);
+                } else if (data.type === "CONFIG_UPDATED") {
+                    setGameConfig(data.payload);
                 } else if (data.type === "ROOM_CLOSED") {
                     console.warn("Room was closed by server:", data.payload.reason);
                     setRoomInfo(null);
@@ -159,7 +162,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
     }, []);
 
     return (
-        <WebSocketContext.Provider value={{ socket: socketRef.current, status, roomInfo, players, selectedGame, setRoomInfo, sendMessage }}>
+        <WebSocketContext.Provider value={{ socket: socketRef.current, status, roomInfo, players, selectedGame, gameConfig, setRoomInfo, setGameConfig, sendMessage }}>
             {children}
         </WebSocketContext.Provider>
     );

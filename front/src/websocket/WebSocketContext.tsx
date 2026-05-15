@@ -21,8 +21,10 @@ export interface WebSocketContextType {
     roomInfo: Room | null;
     players: Player[];
     selectedGame: string;
+    gameConfig: Record<string, any>;
     setRoomInfo: (room: Room | null) => void;
-    sendMessage: (data: unknown) => void;
+    setGameConfig: (config: Record<string, any>) => void;
+    sendMessage: (data: any) => void;
 }
 
 export const WebSocketContext = createContext<WebSocketContextType | null>(null);

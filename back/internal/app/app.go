@@ -6,6 +6,7 @@ import (
 
 	"github.com/Kibishi47/mini-games/back/internal/config"
 	"github.com/Kibishi47/mini-games/back/internal/domain/auth"
+	domaingame "github.com/Kibishi47/mini-games/back/internal/domain/game"
 	domainroom "github.com/Kibishi47/mini-games/back/internal/domain/room"
 	apihttp "github.com/Kibishi47/mini-games/back/internal/http"
 	"github.com/Kibishi47/mini-games/back/internal/infra/postgres"
@@ -55,11 +56,15 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	// room service
 	roomService := domainroom.NewService(roomRepo)
 
+	// game service
+	gameService := domaingame.NewService()
+
 	// container
 	deps := &apihttp.Deps{
 		Auth: authService,
 		Room: roomService,
 		User: userRepo,
+		Game: gameService,
 		WS:   hub,
 	}
 

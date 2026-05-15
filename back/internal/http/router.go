@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Kibishi47/mini-games/back/internal/http/auth"
+	"github.com/Kibishi47/mini-games/back/internal/http/game"
 	"github.com/Kibishi47/mini-games/back/internal/http/health"
 	"github.com/Kibishi47/mini-games/back/internal/http/middlewares"
 	"github.com/Kibishi47/mini-games/back/internal/http/room"
@@ -50,6 +51,9 @@ func NewRouter(cfg config.Config, deps *Deps) http.Handler {
 		
 		roomHandler := room.NewHandler(deps.Room)
 		room.Routes(r, roomHandler, authMw)
+
+		gameHandler := game.NewHandler(deps.Game)
+		game.Routes(r, gameHandler)
 	})
 
 	ws.Routes(r, deps.WS, deps.Auth, deps.User)

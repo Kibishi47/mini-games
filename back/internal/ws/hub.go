@@ -60,6 +60,8 @@ func (h *Hub) Run() {
 		case m := <-h.message:
 			if m.Type == "SELECT_GAME" {
 				h.handleSelectGame(m)
+			} else if m.Type == "UPDATE_CONFIG" {
+				h.handleUpdateConfig(m)
 			}
 		}
 	}
@@ -88,6 +90,34 @@ func (h *Hub) handleSelectGame(m *Message) {
 		"payload": map[string]any{
 			"gameId": gameID,
 		},
+	})
+
+	set := h.clientsByRoom[m.Client.roomCode]
+	for c := range set {
+		select {
+		case c.send <- msg:
+		default:
+			h.removeClient(c)
+		}
+	}
+}
+
+func (h *Hub) handleUpdateConfig(m *Message) {
+	ctx := context.Background()
+	r, err := h.roomRepo.GetByCode(ctx, m.Client.roomCode)
+	if err != nil || r == nil {
+		return
+	}
+
+	// Only host can update config
+	if m.Client.userID != r.HostID {
+		return
+	}
+
+	// Broadcast to everyone in the room
+	msg, _ := json.Marshal(map[string]any{
+		"type": "CONFIG_UPDATED",
+		"payload": m.Payload,
 	})
 
 	set := h.clientsByRoom[m.Client.roomCode]
