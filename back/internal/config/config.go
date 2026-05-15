@@ -15,6 +15,9 @@ type Config struct {
 	Port               int
 	CorsAllowedOrigins []string
 	DatabaseURL        string
+	RedisURL           string
+	RedisUsername       string
+	RedisPassword       string
 	AuthTokenTTL       time.Duration
 }
 
@@ -26,11 +29,18 @@ func Load() (Config, error) {
 		Port:               getEnvAsInt("PORT", 8080),
 		CorsAllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "")),
 		DatabaseURL:        getEnv("DATABASE_URL", ""),
+		RedisURL:           getEnv("REDIS_URL", ""),
+		RedisUsername:      getEnv("REDIS_USERNAME", ""),
+		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
 		AuthTokenTTL:       getEnvAsDuration("AUTH_TOKEN_TTL", time.Hour*24*7),
 	}
 
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("the DATABASE_URL environment variable is required")
+	}
+	
+	if cfg.RedisURL == "" {
+		return cfg, errors.New("the REDIS_URL environment variable is required")
 	}
 
 	return cfg, nil

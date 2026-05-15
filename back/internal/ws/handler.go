@@ -3,19 +3,22 @@ package ws
 import (
 	"net/http"
 
+	"github.com/Kibishi47/mini-games/back/internal/domain/user"
 	"github.com/Kibishi47/mini-games/back/internal/http/auth"
 	"github.com/gorilla/websocket"
 )
 
 type Handler struct {
-	hub  *Hub
-	auth auth.Service
+	hub      *Hub
+	auth     auth.Service
+	userRepo user.Repository
 }
 
-func NewHandler(hub *Hub, auth auth.Service) *Handler {
+func NewHandler(hub *Hub, auth auth.Service, userRepo user.Repository) *Handler {
 	return &Handler{
-		hub:  hub,
-		auth: auth,
+		hub:      hub,
+		auth:     auth,
+		userRepo: userRepo,
 	}
 }
 
@@ -38,22 +41,26 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	u, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	roomCode := r.URL.Query().Get("room")
+	if roomCode == "" {
+		http.Error(w, "missing room", http.StatusBadRequest)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 
-	client := NewClient(conn, userID)
+	client := NewClient(h.hub, conn, userID, u.Username, roomCode)
 	h.hub.register <- client
 
-	go client.writePump()
-
-	for {
-		_, _, err := client.conn.ReadMessage()
-		if err != nil {
-			break
-		}
-	}
-
-	h.hub.unregister <- client
+	go client.WritePump()
+	client.ReadPump()
 }
