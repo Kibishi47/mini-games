@@ -1,53 +1,39 @@
 <template>
-  <div class="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col space-y-4">
-    <div class="flex items-center justify-between pb-3 border-b border-white/10">
+  <AppCard variant="white" shadow="md" class="flex flex-col space-y-3">
+    <div class="flex items-center justify-between pb-2 border-b-2 border-ink-black">
       <div class="flex items-center space-x-2">
-        <Users class="w-5 h-5 text-indigo-400" />
-        <span class="font-semibold text-sm text-white">Adversaires en direct</span>
+        <Users class="w-4 h-4 text-game-blue" />
+        <span class="font-display font-black text-xs uppercase text-ink-black tracking-wider">Adversaires en Direct</span>
       </div>
-      <span class="text-xs px-2.5 py-0.5 rounded-full bg-white/5 text-slate-400">
-        {{ opponents.length }} joueur(s)
-      </span>
+      <AppBadge variant="master">{{ opponents.length }}</AppBadge>
     </div>
 
-    <!-- Grille compacte des adversaires -->
-    <div class="grid grid-cols-1 gap-3 overflow-y-auto max-h-[500px] pr-1">
+    <!-- Mini Panneaux Latéraux des Concurrents -->
+    <div class="grid grid-cols-1 gap-2.5 overflow-y-auto max-h-[380px] pr-1">
       <div
-        v-for="opp in opponents"
+        v-for="(opp, idx) in opponents"
         :key="opp.user_id"
-        class="glass-card p-3 rounded-xl border border-white/5 flex flex-col space-y-2 relative overflow-hidden"
+        class="border-2 border-ink-black rounded-xl p-2.5 bg-board-cream flex flex-col space-y-1.5 shadow-pop-xs"
       >
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
-            <span class="font-medium text-xs text-slate-200 truncate max-w-[120px]">
+            <GameMascot :name="getMascotName(idx)" mood="idle" size="sm" />
+            <span class="font-display font-black text-xs uppercase text-ink-black truncate max-w-[120px]">
               {{ opp.display_username }}
             </span>
           </div>
           
-          <div class="flex items-center space-x-1">
-            <span
-              v-if="opp.is_solved"
-              class="flex items-center text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full"
-            >
-              <CheckCircle2 class="w-3 h-3 mr-1" /> Trouvé
-            </span>
-            <span
-              v-else-if="opp.is_finished"
-              class="text-[11px] font-medium text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full"
-            >
-              Échoué
-            </span>
-            <span
-              v-else
-              class="text-[11px] text-slate-400"
-            >
-              Ligne {{ (opp.masked_rows || []).length }}/{{ maxAttempts }}
+          <div>
+            <AppBadge v-if="opp.is_solved" variant="success">Trouvé !</AppBadge>
+            <AppBadge v-else-if="opp.is_finished" variant="danger">Échoué</AppBadge>
+            <span v-else class="font-condensed font-bold text-[10px] uppercase text-ink-black/60">
+              Essai {{ (opp.masked_rows || []).length }}/{{ maxAttempts }}
             </span>
           </div>
         </div>
 
-        <!-- Mini Tuiles Masquées (Sans lettres, uniquement les couleurs !) -->
-        <div class="flex flex-col gap-1 items-center bg-black/20 p-2 rounded-lg">
+        <!-- Mini Tuiles Masquées (State Masking Strict) -->
+        <div class="flex flex-col gap-1 items-center bg-board-white p-2 rounded-lg border border-ink-black">
           <div
             v-for="(row, rIdx) in (opp.masked_rows || [])"
             :key="rIdx"
@@ -57,28 +43,34 @@
               v-for="(tile, cIdx) in row"
               :key="cIdx"
               :class="[
-                'w-5 h-5 rounded-md transition-colors',
-                tile.status === 'correct' ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' :
-                tile.status === 'present' ? 'bg-amber-400 shadow-sm shadow-amber-400/50' :
-                'bg-slate-700'
+                'w-4 h-4 rounded-md border border-ink-black',
+                tile.status === 'correct' ? 'bg-game-green' :
+                tile.status === 'present' ? 'bg-game-yellow' :
+                'pattern-hatch'
               ]"
             />
           </div>
-          <div v-if="!opp.masked_rows || opp.masked_rows.length === 0" class="text-[10px] text-slate-500 py-2 italic">
+          <div v-if="!opp.masked_rows || opp.masked_rows.length === 0" class="text-[10px] font-bold text-ink-black/40 py-1 uppercase">
             En réflexion...
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </AppCard>
 </template>
 
 <script setup lang="ts">
-import { Users, CheckCircle2 } from 'lucide-vue-next'
+import { Users } from 'lucide-vue-next'
 import type { OpponentProgress } from '~/stores/game'
+import GameMascot, { type MascotName } from '~/components/ui/GameMascot.vue'
+import AppCard from '~/components/ui/AppCard.vue'
+import AppBadge from '~/components/ui/AppBadge.vue'
 
 defineProps<{
   opponents: OpponentProgress[]
   maxAttempts: number
 }>()
+
+const mascotPool: MascotName[] = ['knight', 'domino', 'card', 'd20', 'meeple', 'dice']
+const getMascotName = (idx: number): MascotName => mascotPool[idx % mascotPool.length]
 </script>

@@ -1,6 +1,6 @@
 <template>
-  <div class="flex flex-col items-center select-none w-full max-w-lg mx-auto">
-    <!-- Grille de jeu -->
+  <div class="flex flex-col items-center select-none w-full max-w-xl mx-auto">
+    <!-- Grille de jeu Principale -->
     <div class="grid gap-2.5 mb-8 w-full">
       <div
         v-for="(row, rIdx) in rows"
@@ -11,18 +11,16 @@
           v-for="(tile, cIdx) in row"
           :key="cIdx"
           :class="[
-            'w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center font-black text-2xl rounded-2xl border-2 transition-all duration-300 transform',
+            'w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center font-condensed font-black text-3xl rounded-xl border-[3.5px] border-ink-black transition-none select-none',
             getTileClass(tile, rIdx === activeRowIndex && !!tile.letter)
           ]"
         >
-          <span :class="{ 'animate-pop': rIdx === activeRowIndex && !!tile.letter }">
-            {{ tile.letter }}
-          </span>
+          <span>{{ tile.letter }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Clavier Virtuel réactif -->
+    <!-- Clavier Virtuel Façon Touches de Scrabble / Machine à écrire -->
     <div class="w-full space-y-2">
       <div
         v-for="(keyboardRow, idx) in keyboardRows"
@@ -34,13 +32,13 @@
           :key="key"
           @click="handleKeyPress(key)"
           :class="[
-            'flex items-center justify-center font-bold text-sm sm:text-base rounded-xl transition-all duration-150 active:scale-95 shadow-md',
-            key.length > 1 ? 'px-3 sm:px-4 h-12 bg-slate-800 text-slate-200 hover:bg-slate-700' : 'w-10 sm:w-11 h-12',
+            'flex items-center justify-center font-display font-black text-sm sm:text-base rounded-xl border-[2.5px] border-ink-black shadow-pop-xs transition-none active:translate-x-[2px] active:translate-y-[2px] active:shadow-none select-none',
+            key.length > 1 ? 'px-3 sm:px-4 h-12 bg-game-blue text-board-white' : 'w-10 sm:w-11 h-12',
             getKeyClass(key)
           ]"
         >
           <span v-if="key !== 'DEL'">{{ key }}</span>
-          <Delete v-else class="w-5 h-5 text-slate-300" />
+          <Delete v-else class="w-5 h-5 text-ink-black" />
         </button>
       </div>
     </div>
@@ -66,7 +64,7 @@ const keyboardRows = [
 
 const activeRowIndex = computed(() => gameStore.myAttempts.length)
 
-// Construction réactive des lignes (historique + ligne courante + lignes vides)
+// Construction réactive des lignes
 const rows = computed(() => {
   const result: TileEvaluation[][] = []
   const wordLen = gameStore.wordLength
@@ -104,27 +102,27 @@ const rows = computed(() => {
 
 const getTileClass = (tile: TileEvaluation, isTyping: boolean) => {
   if (tile.status === 'correct') {
-    return 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-600/30'
+    return 'bg-game-green text-board-white shadow-pop-xs'
   }
   if (tile.status === 'present') {
-    return 'bg-amber-500 border-amber-400 text-white shadow-lg shadow-amber-500/30'
+    return 'bg-game-yellow text-ink-black shadow-pop-xs'
   }
   if (tile.status === 'absent') {
-    return 'bg-slate-800 border-slate-700 text-slate-400'
+    return 'pattern-hatch text-ink-black/40'
   }
   if (isTyping) {
-    return 'bg-brand-surface/90 border-indigo-400 text-white scale-105 shadow-md shadow-indigo-500/20'
+    return 'bg-board-white text-ink-black shadow-pop-sm'
   }
-  return 'bg-brand-surface/40 border-white/10 text-white'
+  return 'bg-board-white text-ink-black'
 }
 
 const getKeyClass = (key: string) => {
   if (key === 'ENTER' || key === 'DEL') return ''
   const status = gameStore.keyboardStatus[key]
-  if (status === 'correct') return 'bg-emerald-600 text-white hover:bg-emerald-500'
-  if (status === 'present') return 'bg-amber-500 text-white hover:bg-amber-400'
-  if (status === 'absent') return 'bg-slate-900 text-slate-500 cursor-not-allowed opacity-50'
-  return 'bg-slate-800 text-white hover:bg-slate-700'
+  if (status === 'correct') return 'bg-game-green text-board-white'
+  if (status === 'present') return 'bg-game-yellow text-ink-black'
+  if (status === 'absent') return 'pattern-hatch text-ink-black/40 cursor-not-allowed opacity-60 shadow-none'
+  return 'bg-board-white text-ink-black hover:bg-board-cream'
 }
 
 const handleKeyPress = (key: string) => {
@@ -144,10 +142,9 @@ const handleKeyPress = (key: string) => {
   }
 }
 
-// Écoute des touches du clavier physique desktop
 const onKeyDown = (e: KeyboardEvent) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-    return // Laisser le chat tranquille
+    return
   }
   if (e.key === 'Backspace') {
     handleKeyPress('DEL')
