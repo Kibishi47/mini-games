@@ -56,10 +56,27 @@ func normalizeWord(s string, normalizer transform.Transformer) (string, bool) {
 	return res, true
 }
 
+// Candidate représente un mot éligible à la liste des cibles avec son score de popularité combiné
+type Candidate struct {
+	Word  string
+	Score float64
+}
+
+var topNByLength = map[int]int{
+	3: 200,
+	4: 600,
+	5: 1500,
+	6: 2000,
+	7: 2000,
+	8: 1500,
+}
+
 func main() {
 	minLen := flag.Int("min", 3, "Longueur minimale des mots")
 	maxLen := flag.Int("max", 8, "Longueur maximale des mots")
-	freqThreshold := flag.Float64("freq", 5.0, "Seuil de fréquence combinée pour targets")
+	freqFilmsMin := flag.Float64("freqfilms-min", 1.5, "Seuil minimum plancher freqfilms (oral/cinéma)")
+	freqLivresMin := flag.Float64("freqlivres-min", 1.0, "Seuil minimum plancher freqlivres (écrit/littéraire)")
+	minScore := flag.Float64("min-score", 2.5, "Score combiné minimum d'éligibilité pour targets")
 	lexiqueURL := flag.String("url", defaultLexiqueURL, "URL du fichier Lexique383.zip")
 	outDir := flag.String("out", "backend/internal/service/games/wordle/dictionary/fr", "Dossier de sortie")
 	flag.Parse()
@@ -74,6 +91,31 @@ func main() {
 		log.Fatalf("❌ Impossible de créer le dossier de sortie : %v", err)
 	}
 
+	// Transformer pour enlever les accents et normaliser en ASCII majuscule
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+
+	// 1. Chargement de blacklist.txt si existant
+	blacklistedMap := make(map[string]struct{})
+	blacklistPath := filepath.Join(resolvedOutDir, "blacklist.txt")
+	if fBlacklist, err := os.Open(blacklistPath); err == nil {
+		scannerBlacklist := bufio.NewScanner(fBlacklist)
+		for scannerBlacklist.Scan() {
+			line := strings.TrimSpace(scannerBlacklist.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			normWord, ok := normalizeWord(line, t)
+			if ok {
+				blacklistedMap[normWord] = struct{}{}
+			}
+		}
+		fBlacklist.Close()
+		log.Printf("🚫 Blacklist chargée depuis %s : %d mots exclus des cibles", blacklistPath, len(blacklistedMap))
+	} else {
+		log.Printf("ℹ️ Aucun fichier blacklist.txt trouvé à %s (ignoré)", blacklistPath)
+	}
+
+	// 2. Téléchargement et ouverture de l'archive Lexique 383
 	log.Printf("📥 Téléchargement de la base lexicale depuis %s ...", *lexiqueURL)
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Get(*lexiqueURL)
@@ -114,9 +156,6 @@ func main() {
 		log.Fatalf("❌ Impossible d'ouvrir le fichier dans le ZIP : %v", err)
 	}
 	defer rc.Close()
-
-	// Transformer pour enlever les accents
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 
 	scanner := bufio.NewScanner(rc)
 	buf := make([]byte, 1024*1024)
@@ -167,16 +206,19 @@ func main() {
 		colNombre = 5
 	}
 	if colFreqLivres == -1 {
-		colFreqLivres = 6
+		colFreqLivres = 9
 	}
 	if colFreqFilms == -1 {
-		colFreqFilms = 7
+		colFreqFilms = 8
 	}
 
 	log.Printf("🔍 Colonnes détectées: ortho=%d, lemme=%d, cgram=%d, nombre=%d, freqlivres=%d, freqfilms=%d",
 		colOrtho, colLemme, colCgram, colNombre, colFreqLivres, colFreqFilms)
 
-	targetsMap := make(map[string]struct{})
+	candidatesByLength := make(map[int]map[string]float64)
+	for l := *minLen; l <= *maxLen; l++ {
+		candidatesByLength[l] = make(map[string]float64)
+	}
 	allValidMap := make(map[string]struct{})
 
 	lineCount := 0
@@ -199,21 +241,19 @@ func main() {
 			continue
 		}
 
-		// Tout mot valide de 3 à 8 lettres entre dans le dictionnaire global
+		// Tout mot valide de 3 à 8 lettres entre dans la réserve globale
 		allValidMap[word] = struct{}{}
 
 		// -------------------------------------------------------------
-		// Critères d'éligibilité pour targets.txt (Mots cibles canoniques)
+		// Critères stricts d'éligibilité pour targets.txt
 		// -------------------------------------------------------------
-		// 1. Longueur : minLen..maxLen (3..8)
-		// 2. Forme canonique pure :
-		//    - ortho normalisé == lemme normalisé
-		//    - nombre == "s" ou vide (pas de pluriel 'p')
-		// 3. Catégorie grammaticale sémantiquement forte : NOM, VER, ADJ
-		//    - Exclure formellement : ONO, INTERJ, PRO, ART, PRE, CON, etc.
-		// 4. Fréquence d'usage usuel :
-		//    - (freqfilms >= 8.0 || freqlivres >= 8.0) && (freqlivres + freqfilms) / 2 >= freqThreshold
-		// -------------------------------------------------------------
+		// 0. Si présent dans la blacklist, rejet des cibles immédiat
+		if _, isBlacklisted := blacklistedMap[word]; isBlacklisted {
+			continue
+		}
+
+		// 1. Forme canonique pure :
+		//    orthographe normalisée == lemme normalisé
 		var rawLemme string
 		if colLemme < len(cols) {
 			rawLemme = cols[colLemme]
@@ -223,7 +263,7 @@ func main() {
 			continue
 		}
 
-		// Vérification du nombre (pas de pluriel)
+		// 2. Exclusion des formes plurielles : nombre == "s" ou vide
 		if colNombre < len(cols) {
 			nombre := strings.TrimSpace(cols[colNombre])
 			if nombre != "" && nombre != "s" {
@@ -231,7 +271,7 @@ func main() {
 			}
 		}
 
-		// Catégorie grammaticale
+		// 3. Catégorie grammaticale sémantiquement forte : NOM, VER, ADJ
 		if colCgram >= len(cols) {
 			continue
 		}
@@ -240,7 +280,7 @@ func main() {
 			continue
 		}
 
-		// Fréquences freqlivres et freqfilms
+		// 4. Plancher anti-bruit : freqfilms >= 1.5 ET freqlivres >= 1.0
 		var freqLivres, freqFilms float64
 		if colFreqLivres < len(cols) {
 			freqLivres, _ = strconv.ParseFloat(strings.TrimSpace(cols[colFreqLivres]), 64)
@@ -249,10 +289,21 @@ func main() {
 			freqFilms, _ = strconv.ParseFloat(strings.TrimSpace(cols[colFreqFilms]), 64)
 		}
 
-		meanFreq := (freqLivres + freqFilms) / 2.0
-		isFrequent := (freqFilms >= 8.0 || freqLivres >= 8.0) && meanFreq >= *freqThreshold
-		if isFrequent {
-			targetsMap[word] = struct{}{}
+		if freqFilms < *freqFilmsMin || freqLivres < *freqLivresMin {
+			continue
+		}
+
+		// 5. Calcul du score de popularité combiné (sur-pondération oral contemporain)
+		score := (freqFilms * 0.65) + (freqLivres * 0.35)
+
+		// 6. Condition d'éligibilité : score >= minScore (par défaut 2.5)
+		if score < *minScore {
+			continue
+		}
+
+		// Conserver le meilleur score si le mot apparaît plusieurs fois (ex: homographes NOM/VER)
+		if existingScore, exists := candidatesByLength[wordLen][word]; !exists || score > existingScore {
+			candidatesByLength[wordLen][word] = score
 		}
 	}
 
@@ -261,11 +312,44 @@ func main() {
 	}
 
 	log.Printf("📊 Lignes analysées : %d", lineCount)
-	log.Printf("🎯 Total mots cibles canoniques retenus (3-8 lettres) : %d", len(targetsMap))
 	log.Printf("📚 Total mots valides reconnus (3-8 lettres) : %d", len(allValidMap))
 
-	// Règle absolue : partitionnement et déduplication stricte
-	// allowed = allValid \ targets
+	// Plafonnement Top N par longueur de mot
+	targetsMap := make(map[string]struct{})
+	targetsByLenCount := make(map[int]int)
+
+	for l := *minLen; l <= *maxLen; l++ {
+		candidateMap := candidatesByLength[l]
+		candidates := make([]Candidate, 0, len(candidateMap))
+		for w, score := range candidateMap {
+			candidates = append(candidates, Candidate{Word: w, Score: score})
+		}
+
+		// Tri décroissant par score de popularité
+		sort.Slice(candidates, func(i, j int) bool {
+			if candidates[i].Score == candidates[j].Score {
+				return candidates[i].Word < candidates[j].Word
+			}
+			return candidates[i].Score > candidates[j].Score
+		})
+
+		quota, ok := topNByLength[l]
+		if !ok {
+			quota = 750
+		}
+
+		selectedCount := len(candidates)
+		if selectedCount > quota {
+			selectedCount = quota
+		}
+
+		for i := 0; i < selectedCount; i++ {
+			targetsMap[candidates[i].Word] = struct{}{}
+		}
+		targetsByLenCount[l] = selectedCount
+	}
+
+	// Disjonction stricte : allowed = allValid \ targets
 	allowedMap := make(map[string]struct{})
 	for w := range allValidMap {
 		if _, inTarget := targetsMap[w]; !inTarget {
@@ -273,21 +357,17 @@ func main() {
 		}
 	}
 
-	// Tri alphabétique des cibles
+	// Tri alphabétique de targets.txt
 	targetList := make([]string, 0, len(targetsMap))
-	targetsByLen := make(map[int]int)
 	for w := range targetsMap {
 		targetList = append(targetList, w)
-		targetsByLen[len(w)]++
 	}
 	sort.Strings(targetList)
 
-	// Tri alphabétique des mots autorisés additionnels
+	// Tri alphabétique de allowed.txt
 	allowedList := make([]string, 0, len(allowedMap))
-	allowedByLen := make(map[int]int)
 	for w := range allowedMap {
 		allowedList = append(allowedList, w)
-		allowedByLen[len(w)]++
 	}
 	sort.Strings(allowedList)
 
@@ -305,18 +385,19 @@ func main() {
 	}
 	log.Printf("✅ %s écrit avec succès (%d mots)", allowedFile, len(allowedList))
 
-	// Logs détaillés par longueur
-	log.Printf("📈 Répartition des cibles (targets.txt) par longueur :")
+	// Logs détaillés finaux
+	log.Println("=========================================================")
+	log.Println("📋 RÉCAPITULATIF DE LA GÉNÉRATION DU DICTIONNAIRE")
+	log.Println("=========================================================")
+	log.Printf("🚫 Mots dans blacklist.txt pris en compte : %d", len(blacklistedMap))
+	log.Println("🎯 Nombre de mots cibles générés par longueur (targets.txt) :")
 	for l := *minLen; l <= *maxLen; l++ {
-		log.Printf("   • %d lettres : %d mots", l, targetsByLen[l])
+		log.Printf("   • %d lettres : %d mots (sur Top %d)", l, targetsByLenCount[l], topNByLength[l])
 	}
+	log.Printf("🏆 Nombre total de mots dans targets.txt : %d", len(targetList))
+	log.Printf("📚 Nombre total de mots dans allowed.txt : %d", len(allowedList))
 
-	log.Printf("📈 Répartition des mots autorisés (allowed.txt) par longueur :")
-	for l := *minLen; l <= *maxLen; l++ {
-		log.Printf("   • %d lettres : %d mots", l, allowedByLen[l])
-	}
-
-	// Vérification de disjonction stricte
+	// Assertion de validation stricte : 0 intersection
 	intersectionCount := 0
 	for _, w := range targetList {
 		if _, exists := allowedMap[w]; exists {
@@ -325,11 +406,11 @@ func main() {
 	}
 
 	if intersectionCount > 0 {
-		log.Fatalf("❌ ÉCHEC : %d doublons détectés entre targets.txt et allowed.txt !", intersectionCount)
+		log.Fatalf("❌ ÉCHEC CRITIQUE : %d doublons détectés entre targets.txt et allowed.txt !", intersectionCount)
 	}
 
-	log.Printf("🎉 Confirmation explicite : 0 intersection entre targets.txt et allowed.txt !")
-	log.Printf("🚀 Génération du dictionnaire français 3-8 lettres achevée avec succès !")
+	log.Printf("🛡️ Assertion vérifiée avec succès : strictement 0 intersection entre targets.txt et allowed.txt !")
+	log.Println("=========================================================")
 }
 
 func writeLines(path string, lines []string) error {
