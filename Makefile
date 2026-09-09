@@ -48,6 +48,11 @@ test:
 	@echo "🧪 Exécution des tests Go..."
 	cd backend && go test -v -race ./...
 
+# Génération et compilation des dictionnaires français pour Wordle
+dictionary:
+	@echo "Téléchargement et compilation des dictionnaires français..."
+	@cd backend && go run ./cmd/tools/dictionary/main.go
+
 # Nettoyage des artefacts
 clean:
 	@echo "🧹 Nettoyage..."

@@ -49,10 +49,6 @@ func main() {
 		migrationsDir = filepath.Join("backend", "migrations")
 	}
 
-	dictDir := "internal/service/games/wordle/data"
-	if _, err := os.Stat(dictDir); os.IsNotExist(err) {
-		dictDir = filepath.Join("backend", "internal", "service", "games", "wordle", "data")
-	}
 
 	// Mode Migration
 	if *migrateFlag {
@@ -94,10 +90,8 @@ func main() {
 	authService := auth.NewAuthService(cfg, userRepo)
 	roomService := room.NewRoomService(roomRedisRepo, roomSessionRepo, userRepo)
 
-	// Initialisation Dictionnaire Wordle
+	// Initialisation Dictionnaire Wordle (moteur embarqué)
 	dict := wordle.NewDictionary()
-	_ = dict.LoadFromFile("fr", filepath.Join(dictDir, "fr.txt"))
-	_ = dict.LoadFromFile("en", filepath.Join(dictDir, "en.txt"))
 
 	// Initialisation WebSocket Hub & Gestionnaire de Jeu
 	wsHub := ws.NewHub(roomRedisRepo, roomSessionRepo)

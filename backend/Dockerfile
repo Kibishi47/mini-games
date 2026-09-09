@@ -10,6 +10,9 @@ RUN go mod download
 
 COPY . .
 
+# Génération des dictionnaires français au build de production
+RUN go run ./cmd/tools/dictionary/main.go
+
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/api ./cmd/api
 
 # Stage 2: Minimal Runtime
@@ -22,7 +25,6 @@ WORKDIR /app
 
 COPY --from=builder /app/bin/api /app/api
 COPY --from=builder /app/migrations /app/migrations
-COPY --from=builder /app/internal/service/games/wordle/data /app/internal/service/games/wordle/data
 
 USER appuser
 

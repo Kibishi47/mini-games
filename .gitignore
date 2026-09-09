@@ -23,3 +23,6 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# Generated Wordle dictionaries (generated during production deploy / make dictionary)
+backend/internal/service/games/wordle/dictionary/fr/*.txt
