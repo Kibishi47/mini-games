@@ -4,60 +4,82 @@
 
 @layer base {
   body {
-    @apply bg-[#0B0F19] text-slate-100 font-sans antialiased overflow-x-hidden selection:bg-indigo-500 selection:text-white;
+    @apply bg-board-cream text-ink-black font-body antialiased overflow-x-hidden selection:bg-game-yellow selection:text-ink-black;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display text-ink-black tracking-tight;
   }
 }
 
-/* Glassmorphism custom classes */
-.glass-panel {
-  background: rgba(17, 24, 39, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Animations de mood saccadées Pop-Moderniste / Arcade */
+@keyframes mascot-running {
+  0% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+  100% { transform: rotate(-4deg); }
 }
 
-.glass-card {
-  background: rgba(31, 41, 55, 0.5);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+@keyframes mascot-happy {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+  100% { transform: translateY(0px); }
 }
 
-/* Animations tuiles Wordle */
-@keyframes pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.12); }
-  100% { transform: scale(1); }
+@keyframes mascot-sleeping {
+  0% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+  100% { transform: rotate(-2deg); }
 }
 
-@keyframes flip {
-  0% { transform: rotateX(0); }
-  50% { transform: rotateX(90deg); }
-  100% { transform: rotateX(0); }
+@keyframes pop-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
 }
 
-.animate-pop {
-  animation: pop 0.15s ease-in-out forwards;
+.animate-mascot-running {
+  animation: mascot-running 0.15s steps(2) infinite;
 }
 
-.animate-flip {
-  animation: flip 0.5s ease-in-out forwards;
+.animate-mascot-happy {
+  animation: mascot-happy 0.3s steps(3) infinite;
 }
 
-/* Custom scrollbars */
+.animate-mascot-sleeping {
+  animation: mascot-sleeping 2s steps(4) infinite;
+}
+
+.animate-pop-pulse {
+  animation: pop-pulse 0.4s steps(2) infinite;
+}
+
+/* Hachures de tuile absente / texture sérigraphie */
+.pattern-hatch {
+  background-color: #E2DCB8;
+  background-image: repeating-linear-gradient(
+    45deg,
+    #121212 0,
+    #121212 1.5px,
+    transparent 0,
+    transparent 8px
+  );
+}
+
+/* Custom hard scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: #FAF5E8;
+  border-left: 2px solid #121212;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
-  border-radius: 9999px;
+  background: #121212;
+  border: 1px solid #FAF5E8;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.6);
+  background: #1D4ED8;
 }

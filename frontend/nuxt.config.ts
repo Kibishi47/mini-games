@@ -19,16 +19,16 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'MiniGames | Plateforme Multijoueur Desktop',
+      title: 'MiniGames | Festival de Jeux de Société & Wordle Multijoueur',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'Plateforme multijoueur de mini-jeux en temps réel, axée sur Wordle compétitif à plusieurs joueurs.' },
+        { name: 'description', content: 'Plateforme multijoueur festive et pop-moderniste de jeux de société et Wordle compétitif en temps réel.' },
       ],
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap' },
+        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700;800;900&display=swap' },
       ],
     },
   },
