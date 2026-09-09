@@ -1,135 +1,137 @@
 <template>
-  <div class="min-h-screen bg-[#0B0F19] text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
-    <!-- Navbar Desktop -->
-    <header class="border-b border-white/10 bg-brand-surface/30 backdrop-blur-md sticky top-0 z-40">
+  <div class="min-h-screen bg-board-cream text-ink-black flex flex-col justify-between selection:bg-game-yellow selection:text-ink-black">
+    <!-- Navbar Festival -->
+    <header class="border-b-[4px] border-ink-black bg-board-white sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+        
+        <!-- Logo percutant & Mascotte -->
         <div class="flex items-center space-x-3 cursor-pointer" @click="navigateTo('/')">
-          <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <Gamepad2 class="w-6 h-6 text-white" />
-          </div>
+          <GameMascot name="dice" mood="running" size="md" />
           <div>
-            <span class="font-black text-2xl tracking-tight bg-gradient-to-r from-white via-indigo-100 to-indigo-400 bg-clip-text text-transparent">
-              MiniGames
+            <div class="flex items-center space-x-2">
+              <span class="font-display font-black text-3xl tracking-tight text-ink-black uppercase">
+                MiniGames
+              </span>
+              <span class="px-2 py-0.5 rounded-full border-2 border-ink-black bg-game-yellow font-condensed text-[10px] uppercase tracking-wider">
+                Festival
+              </span>
+            </div>
+            <span class="block text-[11px] font-display font-bold uppercase tracking-widest text-game-blue">
+              Jeux de Plateau & Wordle Desktop
             </span>
-            <span class="block text-[10px] uppercase font-bold tracking-widest text-indigo-400">Temps Réel Desktop</span>
           </div>
         </div>
 
         <!-- Profil / Statut / Bouton de connexion -->
         <div class="flex items-center space-x-4">
-          <div v-if="authStore.user && !authStore.isGuest" class="flex items-center space-x-3 glass-card px-4 py-2 rounded-2xl border border-white/10">
-            <img
-              :src="authStore.avatar"
-              alt="Avatar"
-              class="w-9 h-9 rounded-xl bg-slate-800 border border-white/10 p-0.5"
-            />
+          <!-- Connecté localement -->
+          <div v-if="authStore.user && !authStore.isGuest" class="flex items-center space-x-3 border-[3px] border-ink-black bg-board-white px-4 py-2 rounded-2xl shadow-pop-xs">
+            <GameMascot name="knight" mood="idle" size="sm" />
             <div class="text-left">
-              <div class="font-bold text-sm text-white">
+              <div class="font-display font-black text-sm text-ink-black uppercase">
                 {{ authStore.displayName }}
               </div>
-              <div class="text-[11px] text-slate-400">
-                Wordle: {{ authStore.stats?.highest_score || 0 }} pts max
+              <div class="text-[11px] font-condensed text-ink-black/60 uppercase">
+                Score Max : {{ authStore.stats?.highest_score || 0 }} pts
               </div>
             </div>
             
             <button
               @click="authStore.logout"
               title="Déconnexion"
-              class="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors ml-2"
+              class="p-1.5 border-2 border-ink-black bg-board-cream hover:bg-game-red hover:text-board-white rounded-xl shadow-pop-xs active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-none ml-2"
             >
               <LogOut class="w-4 h-4" />
             </button>
           </div>
 
-          <!-- Si invité connecté : afficher profil + option de connexion compte -->
+          <!-- Si invité connecté -->
           <div v-else-if="authStore.user && authStore.isGuest" class="flex items-center space-x-3">
-            <div class="flex items-center space-x-3 glass-card px-4 py-2 rounded-2xl border border-white/10">
-              <img
-                :src="authStore.avatar"
-                alt="Avatar"
-                class="w-8 h-8 rounded-xl bg-slate-800 border border-white/10 p-0.5"
-              />
+            <div class="flex items-center space-x-2 border-[3px] border-ink-black bg-board-white px-3 py-1.5 rounded-xl shadow-pop-xs">
+              <GameMascot name="domino" mood="idle" size="sm" />
               <div class="text-left">
-                <span class="font-bold text-sm text-white">{{ authStore.displayName }}</span>
-                <span class="ml-1.5 text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-semibold">
+                <span class="font-display font-black text-xs uppercase text-ink-black">{{ authStore.displayName }}</span>
+                <span class="ml-1.5 border border-ink-black px-1.5 py-0.5 rounded-md bg-game-yellow font-condensed text-[9px] uppercase">
                   Invité
                 </span>
               </div>
             </div>
 
-            <button
+            <AppButton
+              variant="secondary"
+              size="sm"
               @click="showAuthModal = true"
-              class="px-4 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 font-bold text-xs transition-all flex items-center space-x-1.5"
             >
-              <UserCheck class="w-3.5 h-3.5" />
-              <span>Sauvegarder / Se connecter</span>
-            </button>
+              <UserCheck class="w-3.5 h-3.5 mr-1.5" />
+              <span>Sauvegarder mon compte</span>
+            </AppButton>
           </div>
 
-          <!-- Si non connecté du tout -->
-          <button
+          <!-- Si non connecté -->
+          <AppButton
             v-else
+            variant="primary"
+            size="md"
             @click="showAuthModal = true"
-            class="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center space-x-2"
           >
-            <LogIn class="w-4 h-4" />
+            <LogIn class="w-4 h-4 mr-2" />
             <span>Connexion / Inscription</span>
-          </button>
+          </AppButton>
         </div>
       </div>
     </header>
 
     <!-- Contenu Principal -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-12 flex flex-col justify-center">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
         
-        <!-- Colonne Gauche : Hero Title & Présentation -->
-        <div class="lg:col-span-7 space-y-8">
-          <div class="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold uppercase tracking-wider">
-            <Sparkles class="w-4 h-4" />
-            <span>Moteur Temps Réel Server-Authoritative Go 1.23+</span>
+        <!-- Colonne Gauche : Titre d'Affiche de Festival & Mascottes -->
+        <div class="lg:col-span-7 space-y-6">
+          <div class="inline-flex items-center space-x-2 border-[3px] border-ink-black px-4 py-1.5 rounded-full bg-game-pink font-condensed text-xs uppercase tracking-wider shadow-pop-xs">
+            <Sparkles class="w-4 h-4 text-ink-black" />
+            <span>Tournois Multijoueur en Direct</span>
           </div>
 
-          <h1 class="text-5xl sm:text-6xl font-black tracking-tight leading-[1.15]">
-            Défiez vos amis sur un <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Wordle Multijoueur</span> ultra-dynamique.
+          <h1 class="font-display font-black text-6xl sm:text-7xl leading-[1.05] tracking-tight uppercase text-ink-black">
+            L'Arène Festive du <span class="bg-game-yellow px-2 border-[4px] border-ink-black inline-block transform -rotate-1 shadow-pop-md">Wordle</span> Multijoueur !
           </h1>
 
-          <p class="text-slate-400 text-lg leading-relaxed max-w-xl">
-            Rejoignez une partie en 1 clic en mode invité, synchronisez vos manches avec chronomètres absolus, admirez les grilles adverses sans spoiler et partagez vos résultats viraux.
+          <p class="font-body font-semibold text-ink-black/80 text-lg leading-relaxed max-w-xl">
+            Entrez sur le plateau en 1 clic. Affrontez vos amis manche par manche, observez leurs tuiles en temps réel sans triche et partagez vos victoires avec fierté !
           </p>
 
-          <!-- Badges Avantages -->
-          <div class="grid grid-cols-3 gap-4 pt-4 max-w-lg">
-            <div class="glass-card p-4 rounded-2xl border border-white/5 space-y-1">
-              <Zap class="w-5 h-5 text-indigo-400 mb-2" />
-              <div class="font-bold text-white text-sm">Grace Period 45s</div>
-              <div class="text-xs text-slate-400">Reconnexion sans perte de points</div>
-            </div>
-            <div class="glass-card p-4 rounded-2xl border border-white/5 space-y-1">
-              <EyeOff class="w-5 h-5 text-purple-400 mb-2" />
-              <div class="font-bold text-white text-sm">State Masking</div>
-              <div class="text-xs text-slate-400">Adversaires en direct sans triche</div>
-            </div>
-            <div class="glass-card p-4 rounded-2xl border border-white/5 space-y-1">
-              <Trophy class="w-5 h-5 text-pink-400 mb-2" />
-              <div class="font-bold text-white text-sm">Scoreboard Room</div>
-              <div class="text-xs text-slate-400">Historique complet de session</div>
-            </div>
+          <!-- Badges Avantages Façon Cartes de Jeu -->
+          <div class="grid grid-cols-3 gap-4 pt-2 max-w-xl">
+            <AppCard variant="white" shadow="sm" class="space-y-1">
+              <Zap class="w-5 h-5 text-game-blue mb-1" />
+              <div class="font-display font-black uppercase text-sm text-ink-black">Grace Period</div>
+              <div class="text-xs font-body font-medium text-ink-black/70">45s en cas de déco</div>
+            </AppCard>
+
+            <AppCard variant="white" shadow="sm" class="space-y-1">
+              <EyeOff class="w-5 h-5 text-game-red mb-1" />
+              <div class="font-display font-black uppercase text-sm text-ink-black">State Masking</div>
+              <div class="text-xs font-body font-medium text-ink-black/70">Direct sans spoiler</div>
+            </AppCard>
+
+            <AppCard variant="white" shadow="sm" class="space-y-1">
+              <Trophy class="w-5 h-5 text-game-green mb-1" />
+              <div class="font-display font-black uppercase text-sm text-ink-black">Piste Score</div>
+              <div class="text-xs font-body font-medium text-ink-black/70">Cumul de session</div>
+            </AppCard>
           </div>
         </div>
 
-        <!-- Colonne Droite : Cartes d'Actions (Jeu Rapide, Rejoindre, Créer) -->
-        <div class="lg:col-span-5 space-y-6">
-          <div class="glass-panel p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
-            <div class="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-
-            <!-- Tabs : Rejoindre une Salle / Créer une Salle -->
-            <div class="flex p-1.5 rounded-2xl bg-black/40 border border-white/5 mb-6">
+        <!-- Colonne Droite : Cartouche d'action Rejoindre / Créer -->
+        <div class="lg:col-span-5">
+          <AppCard variant="white" shadow="lg" class="p-7">
+            <!-- Tabs Stylisées -->
+            <div class="flex border-[3px] border-ink-black rounded-2xl bg-board-cream p-1 mb-6 shadow-pop-xs">
               <button
                 @click="activeTab = 'join'"
                 :class="[
-                  'flex-1 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center space-x-2',
-                  activeTab === 'join' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-white'
+                  'flex-1 py-2.5 rounded-xl font-display font-black text-sm uppercase transition-none flex items-center justify-center space-x-2',
+                  activeTab === 'join' ? 'bg-game-yellow border-2 border-ink-black shadow-pop-xs text-ink-black' : 'text-ink-black/60 hover:text-ink-black'
                 ]"
               >
                 <LogIn class="w-4 h-4" />
@@ -139,58 +141,57 @@
               <button
                 @click="activeTab = 'create'"
                 :class="[
-                  'flex-1 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center space-x-2',
-                  activeTab === 'create' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-white'
+                  'flex-1 py-2.5 rounded-xl font-display font-black text-sm uppercase transition-none flex items-center justify-center space-x-2',
+                  activeTab === 'create' ? 'bg-game-blue border-2 border-ink-black shadow-pop-xs text-board-white' : 'text-ink-black/60 hover:text-ink-black'
                 ]"
               >
                 <PlusCircle class="w-4 h-4" />
-                <span>Créer une Salle</span>
+                <span>Créer Salon</span>
               </button>
             </div>
 
             <!-- TAB : REJOINDRE -->
             <div v-if="activeTab === 'join'" class="space-y-4">
               <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
                   Code de la Salle (ex: ABCD-12)
                 </label>
-                <input
+                <AppInput
                   v-model="joinCode"
-                  type="text"
                   placeholder="ABCD-12"
                   maxlength="10"
-                  class="w-full bg-brand-surface/60 border border-white/10 rounded-2xl px-5 py-3.5 text-center font-black tracking-widest text-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 uppercase transition-all"
+                  custom-class="text-center font-condensed tracking-widest text-2xl uppercase font-black"
                 />
               </div>
 
               <!-- Pseudo si non connecté -->
               <div v-if="!authStore.user">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
                   Votre Pseudo d'invité
                 </label>
-                <input
+                <AppInput
                   v-model="guestName"
-                  type="text"
                   placeholder="Laisser vide pour aléatoire"
                   maxlength="20"
-                  class="w-full bg-brand-surface/60 border border-white/10 rounded-2xl px-5 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <button
-                @click="handleJoinRoom"
+              <AppButton
+                variant="primary"
+                size="lg"
                 :disabled="!joinCode.trim() || isLoading"
-                class="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-extrabold text-base shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2"
+                class="w-full mt-2"
+                @click="handleJoinRoom"
               >
-                <Play class="w-5 h-5 fill-current" />
-                <span>{{ isLoading ? 'Connexion...' : 'Rejoindre la partie' }}</span>
-              </button>
+                <Play class="w-5 h-5 fill-current mr-2" />
+                <span>{{ isLoading ? 'Connexion...' : 'Rejoindre la Partie' }}</span>
+              </AppButton>
             </div>
 
             <!-- TAB : CRÉER -->
-            <div v-if="activeTab === 'create'" class="space-y-5">
+            <div v-if="activeTab === 'create'" class="space-y-4">
               <div>
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
                   Longueur des Mots
                 </label>
                 <div class="grid grid-cols-3 gap-2">
@@ -199,10 +200,10 @@
                     :key="len"
                     @click="newRoomSettings.word_length = len"
                     :class="[
-                      'py-2.5 rounded-xl font-bold text-sm border transition-all',
+                      'py-2 rounded-xl font-display font-black text-sm uppercase border-[3px] border-ink-black transition-none',
                       newRoomSettings.word_length === len
-                        ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200'
-                        : 'bg-brand-surface/40 border-white/5 text-slate-400 hover:bg-brand-surface'
+                        ? 'bg-game-yellow shadow-pop-xs text-ink-black'
+                        : 'bg-board-cream text-ink-black/60 hover:bg-board-white'
                     ]"
                   >
                     {{ len }} Lettres
@@ -212,12 +213,12 @@
 
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Chrono par manche
+                  <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
+                    Chrono / Manche
                   </label>
                   <select
                     v-model="newRoomSettings.round_duration"
-                    class="w-full bg-brand-surface/60 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    class="w-full bg-board-white border-[3px] border-ink-black rounded-xl px-3 py-2 text-sm font-display font-bold uppercase focus:outline-none focus:shadow-pop-xs"
                   >
                     <option :value="45">45 secondes</option>
                     <option :value="60">60 secondes</option>
@@ -227,12 +228,12 @@
                 </div>
 
                 <div>
-                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                    Nombre de manches
+                  <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
+                    Manches
                   </label>
                   <select
                     v-model="newRoomSettings.max_rounds"
-                    class="w-full bg-brand-surface/60 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    class="w-full bg-board-white border-[3px] border-ink-black rounded-xl px-3 py-2 text-sm font-display font-bold uppercase focus:outline-none focus:shadow-pop-xs"
                   >
                     <option :value="1">1 Manche</option>
                     <option :value="3">3 Manches</option>
@@ -243,41 +244,41 @@
 
               <!-- Pseudo si non connecté -->
               <div v-if="!authStore.user">
-                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
                   Votre Pseudo
                 </label>
-                <input
+                <AppInput
                   v-model="guestName"
-                  type="text"
                   placeholder="Laisser vide pour aléatoire"
                   maxlength="20"
-                  class="w-full bg-brand-surface/60 border border-white/10 rounded-2xl px-5 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <button
-                @click="handleCreateRoom"
+              <AppButton
+                variant="secondary"
+                size="lg"
                 :disabled="isLoading"
-                class="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-extrabold text-base shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2"
+                class="w-full mt-2"
+                @click="handleCreateRoom"
               >
-                <Sparkles class="w-5 h-5" />
-                <span>{{ isLoading ? 'Création en cours...' : 'Créer le Salon Master' }}</span>
-              </button>
+                <Sparkles class="w-5 h-5 mr-2" />
+                <span>{{ isLoading ? 'Création en cours...' : 'Ouvrir le Salon Master' }}</span>
+              </AppButton>
             </div>
 
             <!-- Message d'erreur -->
-            <div v-if="error" class="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs text-center font-medium">
+            <div v-if="error" class="mt-4 p-3 rounded-xl bg-game-red/10 border-2 border-game-red text-game-red text-xs font-black text-center uppercase tracking-wide">
               {{ error }}
             </div>
-          </div>
+          </AppCard>
         </div>
 
       </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="border-t border-white/5 py-6 text-center text-xs text-slate-500">
-      MiniGames &copy; 2026 • Architecture Go + Nuxt 3 distribuée • Prêt pour VPS & Coolify
+    <!-- Footer Festival -->
+    <footer class="border-t-[3px] border-ink-black bg-board-white py-5 text-center text-xs font-display font-bold uppercase tracking-wider text-ink-black/70">
+      MiniGames &copy; 2026 • Festival Pop-Moderniste de Jeux de Plateau • Go 1.23+ & Nuxt 3
     </footer>
 
     <!-- Modale Connexion / Inscription / Discord -->
@@ -290,8 +291,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { Gamepad2, Sparkles, Zap, EyeOff, Trophy, LogIn, PlusCircle, Play, LogOut, UserCheck } from 'lucide-vue-next'
+import { Sparkles, Zap, EyeOff, Trophy, LogIn, PlusCircle, Play, LogOut, UserCheck } from 'lucide-vue-next'
 import { useAuthStore } from '~/stores/auth'
+import GameMascot from '~/components/ui/GameMascot.vue'
+import AppCard from '~/components/ui/AppCard.vue'
+import AppButton from '~/components/ui/AppButton.vue'
+import AppInput from '~/components/ui/AppInput.vue'
 import AuthModal from '~/components/auth/AuthModal.vue'
 
 const router = useRouter()
