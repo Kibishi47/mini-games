@@ -1,0 +1,25 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build and temporary outputs
+backend/tmp/
+backend/bin/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+*.log
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
