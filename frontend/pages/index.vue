@@ -15,20 +15,17 @@
           </div>
         </div>
 
-        <!-- Profil / Statut -->
+        <!-- Profil / Statut / Bouton de connexion -->
         <div class="flex items-center space-x-4">
-          <div v-if="authStore.user" class="flex items-center space-x-3 glass-card px-4 py-2 rounded-2xl border border-white/10">
+          <div v-if="authStore.user && !authStore.isGuest" class="flex items-center space-x-3 glass-card px-4 py-2 rounded-2xl border border-white/10">
             <img
               :src="authStore.avatar"
               alt="Avatar"
               class="w-9 h-9 rounded-xl bg-slate-800 border border-white/10 p-0.5"
             />
             <div class="text-left">
-              <div class="font-bold text-sm text-white flex items-center space-x-1.5">
-                <span>{{ authStore.displayName }}</span>
-                <span v-if="authStore.isGuest" class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-semibold">
-                  Invité
-                </span>
+              <div class="font-bold text-sm text-white">
+                {{ authStore.displayName }}
               </div>
               <div class="text-[11px] text-slate-400">
                 Wordle: {{ authStore.stats?.highest_score || 0 }} pts max
@@ -43,6 +40,41 @@
               <LogOut class="w-4 h-4" />
             </button>
           </div>
+
+          <!-- Si invité connecté : afficher profil + option de connexion compte -->
+          <div v-else-if="authStore.user && authStore.isGuest" class="flex items-center space-x-3">
+            <div class="flex items-center space-x-3 glass-card px-4 py-2 rounded-2xl border border-white/10">
+              <img
+                :src="authStore.avatar"
+                alt="Avatar"
+                class="w-8 h-8 rounded-xl bg-slate-800 border border-white/10 p-0.5"
+              />
+              <div class="text-left">
+                <span class="font-bold text-sm text-white">{{ authStore.displayName }}</span>
+                <span class="ml-1.5 text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-semibold">
+                  Invité
+                </span>
+              </div>
+            </div>
+
+            <button
+              @click="showAuthModal = true"
+              class="px-4 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 font-bold text-xs transition-all flex items-center space-x-1.5"
+            >
+              <UserCheck class="w-3.5 h-3.5" />
+              <span>Sauvegarder / Se connecter</span>
+            </button>
+          </div>
+
+          <!-- Si non connecté du tout -->
+          <button
+            v-else
+            @click="showAuthModal = true"
+            class="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center space-x-2"
+          >
+            <LogIn class="w-4 h-4" />
+            <span>Connexion / Inscription</span>
+          </button>
         </div>
       </div>
     </header>
@@ -247,13 +279,20 @@
     <footer class="border-t border-white/5 py-6 text-center text-xs text-slate-500">
       MiniGames &copy; 2026 • Architecture Go + Nuxt 3 distribuée • Prêt pour VPS & Coolify
     </footer>
+
+    <!-- Modale Connexion / Inscription / Discord -->
+    <AuthModal
+      :is-open="showAuthModal"
+      @close="showAuthModal = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { Gamepad2, Sparkles, Zap, EyeOff, Trophy, LogIn, PlusCircle, Play, LogOut } from 'lucide-vue-next'
+import { Gamepad2, Sparkles, Zap, EyeOff, Trophy, LogIn, PlusCircle, Play, LogOut, UserCheck } from 'lucide-vue-next'
 import { useAuthStore } from '~/stores/auth'
+import AuthModal from '~/components/auth/AuthModal.vue'
 
 const router = useRouter()
 const config = useRuntimeConfig()
@@ -264,6 +303,7 @@ const joinCode = ref('')
 const guestName = ref('')
 const isLoading = ref(false)
 const error = ref<string | null>(null)
+const showAuthModal = ref(false)
 
 const newRoomSettings = reactive({
   game_type: 'wordle',
