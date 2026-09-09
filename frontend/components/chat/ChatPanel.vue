@@ -1,83 +1,111 @@
 <template>
-  <div class="glass-panel flex flex-col h-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-    <!-- Header -->
-    <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-brand-surface/40">
-      <div class="flex items-center space-x-2">
-        <MessageSquare class="w-5 h-5 text-indigo-400" />
-        <span class="font-semibold text-white tracking-wide text-sm">Salon de discussion</span>
+  <div class="bg-board-white border-[3.5px] border-ink-black rounded-2xl shadow-pop-md flex flex-col h-full overflow-hidden select-none">
+    
+    <!-- En-tête du Chat Pop Moderniste -->
+    <div class="px-5 py-4 border-b-[3px] border-ink-black flex items-center justify-between bg-game-yellow">
+      <div class="flex items-center space-x-2.5">
+        <MessageSquare class="w-5 h-5 text-ink-black" />
+        <span class="font-display font-black text-ink-black uppercase text-base tracking-wider">
+          Gazette du Festival
+        </span>
       </div>
-      <span class="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium">
+      <AppBadge variant="master">
         {{ roomStore.chatMessages.length }} msg
-      </span>
+      </AppBadge>
     </div>
 
-    <!-- Message List -->
-    <div ref="messagesContainer" class="flex-1 p-4 overflow-y-auto space-y-3">
+    <!-- Liste des Messages & Événements Système -->
+    <div ref="messagesContainer" class="flex-1 p-4 overflow-y-auto space-y-3 bg-board-cream">
       <div
-        v-for="msg in roomStore.chatMessages"
+        v-for="(msg, idx) in roomStore.chatMessages"
         :key="msg.id"
-        class="transition-all duration-200"
       >
-        <!-- Message Système -->
+        <!-- Message Système : Pilule bicolore centrée -->
         <div v-if="msg.is_system" class="flex items-center justify-center my-2">
-          <span class="text-xs px-3 py-1 rounded-full bg-white/5 border border-white/5 text-slate-400 italic">
-            {{ msg.content }}
+          <span class="text-xs font-condensed uppercase px-3 py-1 rounded-full border-2 border-ink-black bg-game-pink text-ink-black shadow-pop-xs">
+            📢 {{ msg.content }}
           </span>
         </div>
 
-        <!-- Message Utilisateur -->
-        <div v-else class="flex items-start space-x-3 group">
-          <img
-            :src="msg.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + msg.sender"
-            alt="Avatar"
-            class="w-8 h-8 rounded-lg bg-indigo-950/60 border border-white/10 p-0.5 mt-0.5 flex-shrink-0"
-          />
+        <!-- Message Utilisateur : Bulle blanche bordée de noir avec mascotte -->
+        <div v-else class="flex items-start space-x-3">
+          <GameMascot :name="getMascotName(idx)" mood="idle" size="sm" class="mt-1 flex-shrink-0" />
+
           <div class="flex-1 min-w-0">
             <div class="flex items-baseline space-x-2">
-              <span class="font-medium text-xs text-indigo-300 truncate">{{ msg.sender }}</span>
-              <span class="text-[10px] text-slate-500">{{ formatTime(msg.created_at) }}</span>
+              <span class="font-display font-black text-xs uppercase text-game-blue truncate">{{ msg.sender }}</span>
+              <span class="text-[10px] font-condensed text-ink-black/50">{{ formatTime(msg.created_at) }}</span>
             </div>
-            <p class="text-sm text-slate-200 break-words mt-0.5 leading-relaxed">{{ msg.content }}</p>
+
+            <!-- Bulle de dialogue Pop -->
+            <div class="mt-1 inline-block bg-board-white border-2 border-ink-black rounded-xl px-3.5 py-2 shadow-pop-xs text-sm font-body font-semibold text-ink-black break-words max-w-full">
+              {{ msg.content }}
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Input Box -->
-    <form @submit.prevent="handleSend" class="p-3 bg-brand-card/60 border-t border-white/10 flex items-center space-x-2">
+    <!-- Si le joueur est muté : bandeau d'alerte rouge avec mascotte muette -->
+    <div v-if="isMuted" class="bg-game-red text-board-white border-t-[3px] border-ink-black px-4 py-2 flex items-center justify-center space-x-2 font-display font-black text-xs uppercase">
+      <VolumeX class="w-4 h-4" />
+      <span>Vous êtes actuellement muet sur ordre du Master !</span>
+    </div>
+
+    <!-- Boîte de saisie -->
+    <form
+      v-else
+      @submit.prevent="handleSend"
+      class="p-3 bg-board-white border-t-[3px] border-ink-black flex items-center space-x-2"
+    >
       <input
         v-model="inputContent"
         type="text"
-        placeholder="Envoyer un message au lobby..."
+        placeholder="Écrire une réplique..."
         maxlength="200"
-        class="flex-1 bg-brand-surface/70 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+        class="flex-1 bg-board-cream border-2 border-ink-black rounded-xl px-4 py-2.5 text-sm font-body font-semibold text-ink-black placeholder:text-ink-black/40 focus:outline-none focus:shadow-pop-xs transition-none"
       />
-      <button
+
+      <AppButton
         type="submit"
+        variant="primary"
+        size="sm"
         :disabled="!inputContent.trim()"
-        class="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition-all duration-150 flex items-center justify-center"
       >
         <Send class="w-4 h-4" />
-      </button>
+      </AppButton>
     </form>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
-import { MessageSquare, Send } from 'lucide-vue-next'
+import { ref, watch, computed, nextTick } from 'vue'
+import { MessageSquare, Send, VolumeX } from 'lucide-vue-next'
 import { useRoomStore } from '~/stores/room'
+import { useAuthStore } from '~/stores/auth'
+import GameMascot, { type MascotName } from '~/components/ui/GameMascot.vue'
+import AppButton from '~/components/ui/AppButton.vue'
+import AppBadge from '~/components/ui/AppBadge.vue'
 
 const props = defineProps<{
   onSend: (content: string) => void
 }>()
 
 const roomStore = useRoomStore()
+const authStore = useAuthStore()
 const inputContent = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 
+const mascotPool: MascotName[] = ['dice', 'domino', 'card', 'knight', 'd20', 'meeple']
+const getMascotName = (idx: number): MascotName => mascotPool[idx % mascotPool.length]
+
+const isMuted = computed(() => {
+  const me = roomStore.players.find(p => p.user_id === authStore.user?.id)
+  return me?.is_muted ?? false
+})
+
 const handleSend = () => {
-  if (!inputContent.value.trim()) return
+  if (!inputContent.value.trim() || isMuted.value) return
   props.onSend(inputContent.value.trim())
   inputContent.value = ''
 }
