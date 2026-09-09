@@ -25,8 +25,8 @@ func TestDictionary_EmbeddingAndDisjoint(t *testing.T) {
 			}
 		}
 
-		if len(w) != 5 {
-			t.Errorf("Le mot cible '%s' n'a pas une longueur de 5 lettres (longueur=%d)", w, len(w))
+		if len(w) < 3 || len(w) > 8 {
+			t.Errorf("Le mot cible '%s' n'a pas une longueur entre 3 et 8 lettres (longueur=%d)", w, len(w))
 		}
 
 		targetsMap[w]++
@@ -55,6 +55,10 @@ func TestDictionary_EmbeddingAndDisjoint(t *testing.T) {
 			if r < 'A' || r > 'Z' {
 				t.Fatalf("Le mot autorisé '%s' contient un caractère non autorisé (doit être A-Z)", w)
 			}
+		}
+
+		if len(w) < 3 || len(w) > 8 {
+			t.Errorf("Le mot autorisé '%s' n'a pas une longueur entre 3 et 8 lettres (longueur=%d)", w, len(w))
 		}
 
 		// Règle d'or absolue : ZERO doublon avec targets.txt
@@ -88,8 +92,19 @@ func TestDictionary_EngineMethods(t *testing.T) {
 
 	// Test PickRandom()
 	picked := dict.PickRandom()
-	if len(picked) != 5 {
-		t.Errorf("PickRandom() a retourné '%s' dont la longueur != 5", picked)
+	if len(picked) < 3 || len(picked) > 8 {
+		t.Errorf("PickRandom() a retourné '%s' dont la longueur n'est pas dans [3, 8]", picked)
+	}
+
+	// Test PickRandomByLength pour chaque longueur de 3 à 8
+	for l := 3; l <= 8; l++ {
+		pickedLen := dict.PickRandomByLength(l)
+		if len(pickedLen) != l {
+			t.Errorf("PickRandomByLength(%d) a retourné '%s' de longueur %d", l, pickedLen, len(pickedLen))
+		}
+		if !dict.IsValid(pickedLen) {
+			t.Errorf("Le mot '%s' tiré pour la longueur %d n'est pas reconnu par IsValid()", pickedLen, l)
+		}
 	}
 
 	// Le mot pioché doit être valide et appartenir au dictionnaire
@@ -122,8 +137,8 @@ func TestDictionary_EngineMethods(t *testing.T) {
 	}
 
 	// Test mot bidon invalide
-	if dict.IsValid("ZZZZZZ") {
-		t.Errorf("Le mot non existant 'ZZZZZZ' ne devrait pas être valide")
+	if dict.IsValid("ZZZZZZZZZ") {
+		t.Errorf("Le mot non existant 'ZZZZZZZZZ' ne devrait pas être valide")
 	}
 	if dict.IsValid("12345") {
 		t.Errorf("Le mot '12345' ne devrait pas être valide")

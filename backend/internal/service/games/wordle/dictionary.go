@@ -90,6 +90,22 @@ func (d *Dictionary) PickRandom() string {
 	return d.targets[n.Int64()]
 }
 
+// PickRandomByLength sélectionne un mot secret cible aléatoire d'une longueur spécifique en O(1)
+func (d *Dictionary) PickRandomByLength(length int) string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	if wordList, ok := d.words["fr"][length]; ok && len(wordList) > 0 {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(wordList))))
+		if err == nil {
+			return wordList[n.Int64()]
+		}
+		return wordList[0]
+	}
+
+	return d.PickRandom()
+}
+
 // IsValid vérifie en O(1) si un mot soumis figure dans le dictionnaire étendu (targets + allowed)
 func (d *Dictionary) IsValid(guess string) bool {
 	d.mu.RLock()
@@ -151,12 +167,20 @@ func (d *Dictionary) GetRandomWord(lang string, length int) string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	if (lang == "fr" || lang == "") && (length == 5 || length == 0) && len(d.targets) > 0 {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(d.targets))))
-		if err == nil {
-			return d.targets[n.Int64()]
+	if lang == "fr" || lang == "" {
+		if length <= 0 {
+			length = 5
 		}
-		return d.targets[0]
+		if wordList, ok := d.words["fr"][length]; ok && len(wordList) > 0 {
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(wordList))))
+			if err == nil {
+				return wordList[n.Int64()]
+			}
+			return wordList[0]
+		}
+		if len(d.targets) > 0 {
+			return d.targets[0]
+		}
 	}
 
 	wordList, ok := d.words[lang][length]

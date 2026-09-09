@@ -57,10 +57,9 @@ func normalizeWord(s string, normalizer transform.Transformer) (string, bool) {
 }
 
 func main() {
-	minLen := flag.Int("min", 5, "Longueur minimale des mots")
-	maxLen := flag.Int("max", 7, "Longueur maximale des mots")
-	targetLen := flag.Int("target-len", 5, "Longueur exacte pour les mots cibles (targets.txt)")
-	freqThreshold := flag.Float64("freq", 4.0, "Seuil de freqlivres minimum pour être dans targets.txt")
+	minLen := flag.Int("min", 3, "Longueur minimale des mots")
+	maxLen := flag.Int("max", 8, "Longueur maximale des mots")
+	freqThreshold := flag.Float64("freq", 5.0, "Seuil de fréquence combinée pour targets")
 	lexiqueURL := flag.String("url", defaultLexiqueURL, "URL du fichier Lexique383.zip")
 	outDir := flag.String("out", "backend/internal/service/games/wordle/dictionary/fr", "Dossier de sortie")
 	flag.Parse()
@@ -129,30 +128,53 @@ func main() {
 	}
 	headerLine := scanner.Text()
 	headers := strings.Split(headerLine, "\t")
-	
+
 	colOrtho := -1
-	colFreqLivres := -1
+	colLemme := -1
 	colCgram := -1
+	colNombre := -1
+	colFreqLivres := -1
+	colFreqFilms := -1
 
 	for i, h := range headers {
-		switch strings.TrimSpace(h) {
+		cleanHeader := strings.TrimSpace(h)
+		switch cleanHeader {
 		case "1_ortho", "ortho":
 			colOrtho = i
-		case "7_freqlivres", "freqlivres":
-			colFreqLivres = i
+		case "3_lemme", "lemme":
+			colLemme = i
 		case "4_cgram", "cgram":
 			colCgram = i
+		case "6_nombre", "nombre":
+			colNombre = i
+		case "7_freqlivres", "freqlivres":
+			colFreqLivres = i
+		case "8_freqfilms2", "freqfilms2", "freqfilms":
+			colFreqFilms = i
 		}
 	}
 
 	if colOrtho == -1 {
 		colOrtho = 0
 	}
+	if colLemme == -1 {
+		colLemme = 2
+	}
+	if colCgram == -1 {
+		colCgram = 3
+	}
+	if colNombre == -1 {
+		colNombre = 5
+	}
 	if colFreqLivres == -1 {
 		colFreqLivres = 6
 	}
+	if colFreqFilms == -1 {
+		colFreqFilms = 7
+	}
 
-	log.Printf("🔍 Colonnes détectées: ortho=%d, freqlivres=%d, cgram=%d", colOrtho, colFreqLivres, colCgram)
+	log.Printf("🔍 Colonnes détectées: ortho=%d, lemme=%d, cgram=%d, nombre=%d, freqlivres=%d, freqfilms=%d",
+		colOrtho, colLemme, colCgram, colNombre, colFreqLivres, colFreqFilms)
 
 	targetsMap := make(map[string]struct{})
 	allValidMap := make(map[string]struct{})
@@ -177,27 +199,60 @@ func main() {
 			continue
 		}
 
+		// Tout mot valide de 3 à 8 lettres entre dans le dictionnaire global
 		allValidMap[word] = struct{}{}
 
-		// Sélection pour targets.txt :
-		// 1. Longueur correspondante à targetLen (par défaut 5 lettres)
-		// 2. Fréquence freqlivres >= threshold
-		// 3. Exclure catégories grammaticales obscures (onomatopées, abréviations si possible)
-		if wordLen == *targetLen && colFreqLivres < len(cols) {
-			freqStr := cols[colFreqLivres]
-			freq, _ := strconv.ParseFloat(strings.TrimSpace(freqStr), 64)
-			
-			isObscure := false
-			if colCgram != -1 && colCgram < len(cols) {
-				cgram := strings.TrimSpace(cols[colCgram])
-				if cgram == "ONO" || cgram == "INTERJ" {
-					isObscure = true
-				}
-			}
+		// -------------------------------------------------------------
+		// Critères d'éligibilité pour targets.txt (Mots cibles canoniques)
+		// -------------------------------------------------------------
+		// 1. Longueur : minLen..maxLen (3..8)
+		// 2. Forme canonique pure :
+		//    - ortho normalisé == lemme normalisé
+		//    - nombre == "s" ou vide (pas de pluriel 'p')
+		// 3. Catégorie grammaticale sémantiquement forte : NOM, VER, ADJ
+		//    - Exclure formellement : ONO, INTERJ, PRO, ART, PRE, CON, etc.
+		// 4. Fréquence d'usage usuel :
+		//    - (freqfilms >= 8.0 || freqlivres >= 8.0) && (freqlivres + freqfilms) / 2 >= freqThreshold
+		// -------------------------------------------------------------
+		var rawLemme string
+		if colLemme < len(cols) {
+			rawLemme = cols[colLemme]
+		}
+		normLemme, okLemme := normalizeWord(rawLemme, t)
+		if !okLemme || normLemme != word {
+			continue
+		}
 
-			if freq >= *freqThreshold && !isObscure {
-				targetsMap[word] = struct{}{}
+		// Vérification du nombre (pas de pluriel)
+		if colNombre < len(cols) {
+			nombre := strings.TrimSpace(cols[colNombre])
+			if nombre != "" && nombre != "s" {
+				continue
 			}
+		}
+
+		// Catégorie grammaticale
+		if colCgram >= len(cols) {
+			continue
+		}
+		cgram := strings.TrimSpace(cols[colCgram])
+		if cgram != "NOM" && cgram != "VER" && cgram != "ADJ" {
+			continue
+		}
+
+		// Fréquences freqlivres et freqfilms
+		var freqLivres, freqFilms float64
+		if colFreqLivres < len(cols) {
+			freqLivres, _ = strconv.ParseFloat(strings.TrimSpace(cols[colFreqLivres]), 64)
+		}
+		if colFreqFilms < len(cols) {
+			freqFilms, _ = strconv.ParseFloat(strings.TrimSpace(cols[colFreqFilms]), 64)
+		}
+
+		meanFreq := (freqLivres + freqFilms) / 2.0
+		isFrequent := (freqFilms >= 8.0 || freqLivres >= 8.0) && meanFreq >= *freqThreshold
+		if isFrequent {
+			targetsMap[word] = struct{}{}
 		}
 	}
 
@@ -206,10 +261,10 @@ func main() {
 	}
 
 	log.Printf("📊 Lignes analysées : %d", lineCount)
-	log.Printf("🎯 Mots cibles préliminaires : %d", len(targetsMap))
-	log.Printf("📚 Total mots valides reconnus (5-7 lettres) : %d", len(allValidMap))
+	log.Printf("🎯 Total mots cibles canoniques retenus (3-8 lettres) : %d", len(targetsMap))
+	log.Printf("📚 Total mots valides reconnus (3-8 lettres) : %d", len(allValidMap))
 
-	// Règle d'or : partitionnement et déduplication stricte
+	// Règle absolue : partitionnement et déduplication stricte
 	// allowed = allValid \ targets
 	allowedMap := make(map[string]struct{})
 	for w := range allValidMap {
@@ -220,15 +275,19 @@ func main() {
 
 	// Tri alphabétique des cibles
 	targetList := make([]string, 0, len(targetsMap))
+	targetsByLen := make(map[int]int)
 	for w := range targetsMap {
 		targetList = append(targetList, w)
+		targetsByLen[len(w)]++
 	}
 	sort.Strings(targetList)
 
-	// Tri alphabétique des autorisés additionnels
+	// Tri alphabétique des mots autorisés additionnels
 	allowedList := make([]string, 0, len(allowedMap))
+	allowedByLen := make(map[int]int)
 	for w := range allowedMap {
 		allowedList = append(allowedList, w)
+		allowedByLen[len(w)]++
 	}
 	sort.Strings(allowedList)
 
@@ -246,7 +305,31 @@ func main() {
 	}
 	log.Printf("✅ %s écrit avec succès (%d mots)", allowedFile, len(allowedList))
 
-	log.Printf("🎉 Dictionnaire français généré avec succès ! Disjonction stricte : 0 doublon.")
+	// Logs détaillés par longueur
+	log.Printf("📈 Répartition des cibles (targets.txt) par longueur :")
+	for l := *minLen; l <= *maxLen; l++ {
+		log.Printf("   • %d lettres : %d mots", l, targetsByLen[l])
+	}
+
+	log.Printf("📈 Répartition des mots autorisés (allowed.txt) par longueur :")
+	for l := *minLen; l <= *maxLen; l++ {
+		log.Printf("   • %d lettres : %d mots", l, allowedByLen[l])
+	}
+
+	// Vérification de disjonction stricte
+	intersectionCount := 0
+	for _, w := range targetList {
+		if _, exists := allowedMap[w]; exists {
+			intersectionCount++
+		}
+	}
+
+	if intersectionCount > 0 {
+		log.Fatalf("❌ ÉCHEC : %d doublons détectés entre targets.txt et allowed.txt !", intersectionCount)
+	}
+
+	log.Printf("🎉 Confirmation explicite : 0 intersection entre targets.txt et allowed.txt !")
+	log.Printf("🚀 Génération du dictionnaire français 3-8 lettres achevée avec succès !")
 }
 
 func writeLines(path string, lines []string) error {
