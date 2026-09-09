@@ -3,7 +3,6 @@ package ws
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
@@ -31,6 +30,14 @@ func NewClient(hub *Hub, conn *websocket.Conn, roomCode string, userID uuid.UUID
 		userID:   userID,
 		sendChan: make(chan []byte, 64),
 	}
+}
+
+func (c *Client) RoomCode() string {
+	return c.roomCode
+}
+
+func (c *Client) UserID() uuid.UUID {
+	return c.userID
 }
 
 func (c *Client) ReadPump(ctx context.Context) {
