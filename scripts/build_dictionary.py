@@ -24,9 +24,31 @@ LEXIQUE_URL = "http://www.lexique.org/databases/Lexique383/Lexique383.zip"
 MIN_LEN = 3
 MAX_LEN = 8
 
-# Seuils pour les mots cibles : mots simples et familiers du quotidien
-TARGET_MIN_ZIPF = 4.40
-MIN_SCORE = 15.0
+# ==============================================================================
+# PARAMÈTRE DE DIFFICULTÉ (1 à 10)
+# 1  = Super simple (vocabulaire ultra courant du quotidien, Zipf ~ 4.90, Score ~ 28.0)
+# 5  = Standard / Équilibré (valeurs par défaut d'origine, Zipf ~ 4.30, Score ~ 13.0)
+# 10 = Super dur (vocabulaire riche, soutenu et rare, Zipf ~ 3.50, Score ~ 1.0)
+# Peut également être défini via la variable d'environnement WORDLE_DIFFICULTY ou en argument CLI : python build_dictionary.py [1-10]
+# ==============================================================================
+DIFFICULTY = 5
+
+# Récupération dynamique si passé en CLI ou variable d'environnement
+if len(sys.argv) > 1 and sys.argv[1].isdigit():
+    DIFFICULTY = int(sys.argv[1])
+elif os.environ.get("WORDLE_DIFFICULTY"):
+    try:
+        DIFFICULTY = int(os.environ["WORDLE_DIFFICULTY"])
+    except ValueError:
+        pass
+
+DIFFICULTY = max(1, min(10, DIFFICULTY))
+
+# Calcul continu des seuils en fonction du niveau de difficulté (1 -> 10) :
+# - Plus la difficulté est faible (1), plus on exige une fréquence Zipf et un score d'usage élevés (mots très simples).
+# - Plus la difficulté est élevée (10), plus on abaisse les seuils de fréquence pour accepter des mots plus rares et complexes.
+TARGET_MIN_ZIPF = round(4.90 - ((DIFFICULTY - 1) / 9.0) * (4.90 - 3.50), 2)
+MIN_SCORE = round(28.0 - ((DIFFICULTY - 1) / 9.0) * (28.0 - 1.0), 1)
 
 def normalize_word(raw: str) -> str:
     """
@@ -75,8 +97,9 @@ def load_blacklist(out_dir: Path) -> set:
 def main():
     print("=" * 60)
     print("🚀 Génération des dictionnaires Wordle Français")
-    print(f"   Longueur : {MIN_LEN} à {MAX_LEN} lettres | Zipf >= {TARGET_MIN_ZIPF}")
-    print("   Règle stricte : AUCUN verbe conjugué (infinitifs, noms, adjectifs)")
+    print(f"   Difficulté : {DIFFICULTY}/10 (1=Super simple, 10=Super dur)")
+    print(f"   Longueur   : {MIN_LEN} à {MAX_LEN} lettres | Zipf >= {TARGET_MIN_ZIPF} | Score >= {MIN_SCORE}")
+    print("   Règle      : AUCUN verbe conjugué (infinitifs, noms, adjectifs)")
     print("=" * 60)
 
     out_dir = find_output_dir()

@@ -27,3 +27,11 @@ Thumbs.db
 # Generated Wordle dictionaries (generated during production deploy / make dictionary)
 backend/internal/service/games/wordle/dictionary/fr/*.txt
 !backend/internal/service/games/wordle/dictionary/fr/blacklist.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
