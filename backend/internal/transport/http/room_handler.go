@@ -178,6 +178,8 @@ func (h *RoomHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 				IsConnected: true,
 				JoinedAt:    time.Now(),
 				LastSeenAt:  time.Now(),
+				Score:       0,
+				Location:    "lobby",
 			})
 		}
 	}

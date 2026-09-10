@@ -45,6 +45,7 @@ type RoomPlayer struct {
 	JoinedAt    time.Time  `json:"joined_at"`
 	LastSeenAt  time.Time  `json:"last_seen_at"`
 	Score       int        `json:"score"`
+	Location    string     `json:"location"` // "lobby" | "in_game"
 }
 
 // RoomSettings configure la salle de jeu

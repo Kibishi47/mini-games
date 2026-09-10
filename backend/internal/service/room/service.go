@@ -120,6 +120,7 @@ func (s *RoomService) CreateRoom(ctx context.Context, nickname, mascot, color st
 		JoinedAt:    time.Now(),
 		LastSeenAt:  time.Now(),
 		Score:       0,
+		Location:    "lobby",
 	}
 
 	if err := s.roomRepo.AddPlayer(ctx, code, masterPlayer); err != nil {
@@ -168,8 +169,10 @@ func (s *RoomService) JoinRoom(ctx context.Context, code, nickname, mascot, colo
 	// Si la partie est déjà en cours, le nouvel arrivant est spectateur automatique
 	isSpectator := room.Status == domain.RoomStatusInGame
 	role := domain.RolePlayer
+	location := "lobby"
 	if isSpectator {
 		role = domain.RoleSpectator
+		location = "in_game"
 	}
 
 	player := &domain.RoomPlayer{
@@ -185,6 +188,7 @@ func (s *RoomService) JoinRoom(ctx context.Context, code, nickname, mascot, colo
 		JoinedAt:    time.Now(),
 		LastSeenAt:  time.Now(),
 		Score:       0,
+		Location:    location,
 	}
 
 	if err := s.roomRepo.AddPlayer(ctx, code, player); err != nil {
