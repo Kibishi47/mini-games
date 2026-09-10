@@ -151,16 +151,26 @@ func (r *RoomRepository) GetRoom(ctx context.Context, code string) (*domain.Room
 		}
 	}
 
+	var nextRoundAt *time.Time
+	if nraStr, ok := data["next_round_at"]; ok && nraStr != "" {
+		if t, err := time.Parse(time.RFC3339, nraStr); err == nil {
+			nextRoundAt = &t
+		}
+	}
+
 	players, _ := r.GetPlayers(ctx, code)
 
 	return &domain.Room{
 		Code:         code,
 		Status:       domain.RoomStatus(data["status"]),
+		RoundState:   domain.RoundSubState(data["round_state"]),
 		MasterID:     masterID,
 		Settings:     settings,
 		CurrentRound: currentRound,
 		SecretWord:   data["secret_word"],
+		RevealedWord: data["revealed_word"],
 		EndsAt:       endsAt,
+		NextRoundAt:  nextRoundAt,
 		CreatedAt:    createdAt,
 		Players:      players,
 	}, nil
@@ -168,6 +178,19 @@ func (r *RoomRepository) GetRoom(ctx context.Context, code string) (*domain.Room
 
 func (r *RoomRepository) UpdateRoomStatus(ctx context.Context, code string, status domain.RoomStatus) error {
 	return r.client.HSet(ctx, r.metaKey(code), "status", string(status)).Err()
+}
+
+func (r *RoomRepository) SetRoundState(ctx context.Context, code string, state domain.RoundSubState, revealedWord string, nextRoundAt *time.Time) error {
+	vals := map[string]interface{}{
+		"round_state":   string(state),
+		"revealed_word": revealedWord,
+	}
+	if nextRoundAt != nil {
+		vals["next_round_at"] = nextRoundAt.Format(time.RFC3339)
+	} else {
+		vals["next_round_at"] = ""
+	}
+	return r.client.HSet(ctx, r.metaKey(code), vals).Err()
 }
 
 func (r *RoomRepository) UpdateRoomSettings(ctx context.Context, code string, settings domain.RoomSettings) error {

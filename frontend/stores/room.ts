@@ -26,13 +26,18 @@ export interface RoomSettings {
   language: string
 }
 
+export type RoundSubState = 'playing' | 'round_ended' | 'game_over'
+
 export interface Room {
   code: string
   status: RoomStatus
+  round_state?: RoundSubState
   master_id: string
   settings: RoomSettings
   current_round: number
   ends_at?: string
+  next_round_at?: string
+  revealed_word?: string
   players: RoomPlayer[]
 }
 

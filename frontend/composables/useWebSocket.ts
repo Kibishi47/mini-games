@@ -86,6 +86,38 @@ export function useWebSocket(roomCode: string) {
       case 'room:sync':
         roomStore.setRoom(payload)
         isInitializing.value = false
+
+        // Synchroniser l'état de manche lors d'un F5 / reconnexion
+        if (payload?.status === 'in_game') {
+          if (payload?.round_state === 'round_ended') {
+            gameStore.currentRound = payload.current_round || 1
+            gameStore.targetWord = payload.revealed_word || ''
+            const remainingSec = payload.next_round_at
+              ? Math.max(0, Math.round((new Date(payload.next_round_at).getTime() - Date.now()) / 1000))
+              : 8
+            gameStore.roundSummary = {
+              round: payload.current_round || 1,
+              max_rounds: payload.settings?.max_rounds || 3,
+              secret_word: payload.revealed_word || '',
+              reason: 'Fin de manche',
+              winner_name: '',
+              round_scores: {},
+              total_scores: {},
+              countdown_sec: remainingSec,
+            }
+            gameStore.isGameOver = false
+            gameStore.showRoundSummary = true
+          } else if (payload?.round_state === 'game_over') {
+            gameStore.currentRound = payload.current_round || 3
+            gameStore.targetWord = payload.revealed_word || ''
+            gameStore.isGameOver = true
+            gameStore.showRoundSummary = true
+          } else if (payload?.round_state === 'playing') {
+            gameStore.showRoundSummary = false
+          }
+        } else if (payload?.status === 'in_lobby') {
+          gameStore.showRoundSummary = false
+        }
         break
 
       case 'room:state_changed':

@@ -150,6 +150,7 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 	_ = m.roomRepo.UpdateRoomStatus(ctx, client.RoomCode(), domain.RoomStatusInLobby)
 	_ = m.roomRepo.SetSecretWord(ctx, client.RoomCode(), "")
 	_ = m.roomRepo.UpdateRound(ctx, client.RoomCode(), 0, nil)
+	_ = m.roomRepo.SetRoundState(ctx, client.RoomCode(), "", "", nil)
 
 	// 3. Réintégrer les spectateurs en joueurs
 	players, _ := m.roomRepo.GetPlayers(ctx, client.RoomCode())
@@ -252,6 +253,7 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 	_ = m.roomRepo.UpdateRoomStatus(ctx, room.Code, domain.RoomStatusInGame)
 	_ = m.roomRepo.SetSecretWord(ctx, room.Code, targetWord)
 	_ = m.roomRepo.UpdateRound(ctx, room.Code, roundNum, &endsAt)
+	_ = m.roomRepo.SetRoundState(ctx, room.Code, domain.RoundSubStatePlaying, "", nil)
 
 	// Broadcaster le début de manche avec horodatage absolu ends_at
 	startPayload, _ := json.Marshal(map[string]interface{}{
@@ -478,7 +480,11 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 
 	// Vérifier s'il reste des manches à jouer
 	if room.CurrentRound < room.Settings.MaxRounds {
-		// Compte à rebours automatique de 10s avant la manche suivante (annulable par le Master)
+		nextRoundAt := time.Now().Add(time.Duration(countdownSec) * time.Second)
+		_ = m.roomRepo.SetRoundState(ctx, roomCode, domain.RoundSubStateRoundEnded, round.TargetWord, &nextRoundAt)
+		m.hub.SyncRoom(roomCode)
+
+		// Compte à rebours automatique avant la manche suivante (annulable par le Master)
 		m.roundTimersMu.Lock()
 		if oldTimer, exists := m.nextRoundTimers[roomCode]; exists {
 			oldTimer.Stop()
@@ -497,6 +503,7 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 		m.roundTimersMu.Unlock()
 	} else {
 		// Partie terminée !
+		_ = m.roomRepo.SetRoundState(ctx, roomCode, domain.RoundSubStateGameOver, round.TargetWord, nil)
 		_ = m.roomRepo.UpdateRoomStatus(ctx, roomCode, domain.RoomStatusInLobby)
 		m.hub.BroadcastSystemMessage(roomCode, "Partie terminée ! Retrouvez le classement général.")
 		m.hub.SyncRoom(roomCode)

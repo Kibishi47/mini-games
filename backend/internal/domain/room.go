@@ -15,6 +15,14 @@ const (
 	RoomStatusClosed  RoomStatus = "closed"
 )
 
+type RoundSubState string
+
+const (
+	RoundSubStatePlaying    RoundSubState = "playing"
+	RoundSubStateRoundEnded RoundSubState = "round_ended"
+	RoundSubStateGameOver   RoundSubState = "game_over"
+)
+
 type PlayerRole string
 
 const (
@@ -51,15 +59,18 @@ type RoomSettings struct {
 
 // Room représente l'état global d'une salle
 type Room struct {
-	Code         string       `json:"code"`
-	Status       RoomStatus   `json:"status"`
-	MasterID     uuid.UUID    `json:"master_id"`
-	Settings     RoomSettings `json:"settings"`
-	CurrentRound int          `json:"current_round"`
-	SecretWord   string       `json:"secret_word,omitempty"` // Masqué pour les clients en cours de jeu
-	EndsAt       *time.Time   `json:"ends_at,omitempty"`
-	CreatedAt    time.Time    `json:"created_at"`
-	Players      []RoomPlayer `json:"players"`
+	Code         string        `json:"code"`
+	Status       RoomStatus    `json:"status"`
+	RoundState   RoundSubState `json:"round_state,omitempty"`
+	MasterID     uuid.UUID     `json:"master_id"`
+	Settings     RoomSettings  `json:"settings"`
+	CurrentRound int           `json:"current_round"`
+	SecretWord   string        `json:"secret_word,omitempty"` // Masqué pour les clients en cours de jeu
+	RevealedWord string        `json:"revealed_word,omitempty"`
+	EndsAt       *time.Time    `json:"ends_at,omitempty"`
+	NextRoundAt  *time.Time    `json:"next_round_at,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
+	Players      []RoomPlayer  `json:"players"`
 }
 
 // SessionData stockée dans Redis sous session:{token} avec TTL 45s pour reconnexion transparente
