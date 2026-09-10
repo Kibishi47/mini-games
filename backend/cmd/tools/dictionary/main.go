@@ -63,20 +63,20 @@ type Candidate struct {
 }
 
 var topNByLength = map[int]int{
-	3: 200,
-	4: 600,
-	5: 1500,
-	6: 2000,
-	7: 2000,
-	8: 1500,
+	3: 100,
+	4: 250,
+	5: 500,
+	6: 600,
+	7: 600,
+	8: 500,
 }
 
 func main() {
 	minLen := flag.Int("min", 3, "Longueur minimale des mots")
 	maxLen := flag.Int("max", 8, "Longueur maximale des mots")
-	freqFilmsMin := flag.Float64("freqfilms-min", 1.5, "Seuil minimum plancher freqfilms (oral/cinéma)")
-	freqLivresMin := flag.Float64("freqlivres-min", 1.0, "Seuil minimum plancher freqlivres (écrit/littéraire)")
-	minScore := flag.Float64("min-score", 2.5, "Score combiné minimum d'éligibilité pour targets")
+	freqFilmsMin := flag.Float64("freqfilms-min", 20.0, "Seuil minimum freqfilms (oral/cinéma)")
+	freqLivresMin := flag.Float64("freqlivres-min", 15.0, "Seuil minimum freqlivres (écrit/littéraire)")
+	minScore := flag.Float64("min-score", 20.0, "Score combiné minimum d'éligibilité pour targets")
 	lexiqueURL := flag.String("url", defaultLexiqueURL, "URL du fichier Lexique383.zip")
 	outDir := flag.String("out", "backend/internal/service/games/wordle/dictionary/fr", "Dossier de sortie")
 	flag.Parse()
@@ -280,7 +280,7 @@ func main() {
 			continue
 		}
 
-		// 4. Plancher anti-bruit : freqfilms >= 1.5 ET freqlivres >= 1.0
+		// 4. Double seuil strict : freqfilms >= 20.0 ET freqlivres >= 15.0
 		var freqLivres, freqFilms float64
 		if colFreqLivres < len(cols) {
 			freqLivres, _ = strconv.ParseFloat(strings.TrimSpace(cols[colFreqLivres]), 64)
@@ -293,10 +293,10 @@ func main() {
 			continue
 		}
 
-		// 5. Calcul du score de popularité combiné (sur-pondération oral contemporain)
-		score := (freqFilms * 0.65) + (freqLivres * 0.35)
+		// 5. Calcul du score de popularité combiné : (freqfilms * 0.7) + (freqlivres * 0.3)
+		score := (freqFilms * 0.7) + (freqLivres * 0.3)
 
-		// 6. Condition d'éligibilité : score >= minScore (par défaut 2.5)
+		// 6. Condition d'éligibilité : score >= minScore (par défaut 20.0)
 		if score < *minScore {
 			continue
 		}
