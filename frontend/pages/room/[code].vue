@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-board-cream text-ink-black flex flex-col justify-between selection:bg-game-yellow selection:text-ink-black">
     <!-- Navbar Salle Pop Moderniste -->
     <header class="border-b-[4px] border-ink-black bg-board-white sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-6 h-18 flex items-center justify-between">
+      <div class="max-w-7xl mx-auto px-6 h-20 py-3 flex items-center justify-between">
         
         <!-- Logo & Code de la Salle -->
         <div class="flex items-center space-x-4 cursor-pointer" @click="navigateTo('/')">
@@ -58,7 +58,7 @@
                 {{ profileStore.nickname }}
               </div>
               <span v-if="roomStore.isMaster" class="text-[9px] font-condensed uppercase text-game-blue font-black block">
-                👑 Master
+                Master
               </span>
               <span v-else-if="roomStore.me?.is_spectator" class="text-[9px] font-condensed uppercase text-ink-black/60 font-black block">
                 Spectateur
@@ -313,6 +313,7 @@
       :is-master="roomStore.isMaster"
       :on-rematch="rematch"
       :on-return-lobby="returnToLobby"
+      :on-next-round="nextRound"
     />
   </div>
 </template>
@@ -355,6 +356,7 @@ const {
   startGame,
   stopGame,
   returnToLobby,
+  nextRound,
   submitGuess,
   kickPlayer,
   banPlayer,
