@@ -33,11 +33,29 @@ test:
 	cd backend && go test -v -race ./...
 
 # Génération et compilation des dictionnaires français pour Wordle
+DICTIONARY_DIR = backend/internal/service/games/wordle/dictionary/fr
+PYTHON := $(shell which python3.11 2>/dev/null || which python3 2>/dev/null || echo python3)
+
+.PHONY: dictionary
 dictionary:
-	@echo "Téléchargement et compilation des dictionnaires français..."
-	@cd backend && go run ./cmd/tools/dictionary/main.go
+	@if [ ! -f $(DICTIONARY_DIR)/targets.txt ] || [ ! -f $(DICTIONARY_DIR)/allowed.txt ]; then \
+		echo "Dictionnaires absents. Génération via Python..."; \
+		$(PYTHON) -m pip install -r scripts/requirements.txt; \
+		$(PYTHON) scripts/build_dictionary.py; \
+	else \
+		echo "Dictionnaires déjà présents. Pour forcer la régénération : make force-dictionary"; \
+	fi
+
+.PHONY: force-dictionary
+force-dictionary:
+	@$(PYTHON) -m pip install -r scripts/requirements.txt
+	@$(PYTHON) scripts/build_dictionary.py
+
+.PHONY: build-api
+build-api: dictionary
+	@cd backend && go build -o ../bin/api ./cmd/api/main.go
 
 # Nettoyage des artefacts
 clean:
 	@echo "🧹 Nettoyage..."
-	rm -rf backend/tmp frontend/.nuxt frontend/.output frontend/node_modules
+	rm -rf backend/tmp frontend/.nuxt frontend/.output frontend/node_modules bin/api

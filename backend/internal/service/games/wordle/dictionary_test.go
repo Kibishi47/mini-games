@@ -96,7 +96,12 @@ func TestDictionary_EngineMethods(t *testing.T) {
 		t.Errorf("PickRandom() a retourné '%s' dont la longueur n'est pas dans [3, 8]", picked)
 	}
 
-	// Test PickRandomByLength pour chaque longueur de 3 à 8
+	// Test PickRandomByLength pour chaque longueur de 3 à 8 : DOIT ÊTRE DANS TARGETS.TXT
+	targetsLookup := make(map[string]bool)
+	for _, tw := range dict.targets {
+		targetsLookup[tw] = true
+	}
+
 	for l := 3; l <= 8; l++ {
 		pickedLen := dict.PickRandomByLength(l)
 		if len(pickedLen) != l {
@@ -104,6 +109,9 @@ func TestDictionary_EngineMethods(t *testing.T) {
 		}
 		if !dict.IsValid(pickedLen) {
 			t.Errorf("Le mot '%s' tiré pour la longueur %d n'est pas reconnu par IsValid()", pickedLen, l)
+		}
+		if !targetsLookup[pickedLen] {
+			t.Fatalf("CRITIQUE : Le mot '%s' tiré pour la longueur %d n'est pas dans targets.txt !", pickedLen, l)
 		}
 	}
 

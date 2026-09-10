@@ -20,8 +20,9 @@ type Dictionary struct {
 	mu sync.RWMutex
 
 	// Moteur moderne Wordle (spécifique FR embed)
-	targets    []string
-	allowedSet map[string]struct{}
+	targets         []string
+	targetsByLength map[int][]string // length -> list of secret targets ONLY
+	allowedSet      map[string]struct{}
 
 	// Rétrocompatibilité multi-langues et multi-tailles
 	words map[string]map[int][]string // lang -> length -> list of words
@@ -31,16 +32,17 @@ type Dictionary struct {
 // NewDictionary initialise le dictionnaire avec les listes françaises embarquées via //go:embed
 func NewDictionary() *Dictionary {
 	d := &Dictionary{
-		targets:    make([]string, 0),
-		allowedSet: make(map[string]struct{}),
-		words:      make(map[string]map[int][]string),
-		valid:      make(map[string]map[string]bool),
+		targets:         make([]string, 0),
+		targetsByLength: make(map[int][]string),
+		allowedSet:      make(map[string]struct{}),
+		words:           make(map[string]map[int][]string),
+		valid:           make(map[string]map[string]bool),
 	}
 
 	d.words["fr"] = make(map[int][]string)
 	d.valid["fr"] = make(map[string]bool)
 
-	// Charger targets.txt (Cibles tirables)
+	// Charger targets.txt (Cibles tirables UNIQUEMENT)
 	scannerTargets := bufio.NewScanner(strings.NewReader(frTargetsRaw))
 	for scannerTargets.Scan() {
 		w := strings.ToUpper(strings.TrimSpace(scannerTargets.Text()))
@@ -48,15 +50,16 @@ func NewDictionary() *Dictionary {
 			continue
 		}
 		d.targets = append(d.targets, w)
+		l := len(w)
+		d.targetsByLength[l] = append(d.targetsByLength[l], w)
 		d.allowedSet[w] = struct{}{}
 
 		// Rétrocompatibilité
-		l := len(w)
 		d.words["fr"][l] = append(d.words["fr"][l], w)
 		d.valid["fr"][w] = true
 	}
 
-	// Charger allowed.txt (Mots autorisés additionnels)
+	// Charger allowed.txt (Mots autorisés additionnels pour la VALIDATION uniquement, JAMAIS tirés au sort)
 	scannerAllowed := bufio.NewScanner(strings.NewReader(frAllowedRaw))
 	for scannerAllowed.Scan() {
 		w := strings.ToUpper(strings.TrimSpace(scannerAllowed.Text()))
@@ -65,7 +68,7 @@ func NewDictionary() *Dictionary {
 		}
 		d.allowedSet[w] = struct{}{}
 
-		// Rétrocompatibilité
+		// Rétrocompatibilité pour la validation de mot
 		l := len(w)
 		d.words["fr"][l] = append(d.words["fr"][l], w)
 		d.valid["fr"][w] = true
@@ -90,17 +93,17 @@ func (d *Dictionary) PickRandom() string {
 	return d.targets[n.Int64()]
 }
 
-// PickRandomByLength sélectionne un mot secret cible aléatoire d'une longueur spécifique en O(1)
+// PickRandomByLength sélectionne un mot secret cible aléatoire d'une longueur spécifique UNIQUEMENT parmi targets.txt en O(1)
 func (d *Dictionary) PickRandomByLength(length int) string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	if wordList, ok := d.words["fr"][length]; ok && len(wordList) > 0 {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(wordList))))
+	if targetList, ok := d.targetsByLength[length]; ok && len(targetList) > 0 {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(targetList))))
 		if err == nil {
-			return wordList[n.Int64()]
+			return targetList[n.Int64()]
 		}
-		return wordList[0]
+		return targetList[0]
 	}
 
 	return d.PickRandom()
@@ -171,12 +174,12 @@ func (d *Dictionary) GetRandomWord(lang string, length int) string {
 		if length <= 0 {
 			length = 5
 		}
-		if wordList, ok := d.words["fr"][length]; ok && len(wordList) > 0 {
-			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(wordList))))
+		if targetList, ok := d.targetsByLength[length]; ok && len(targetList) > 0 {
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(targetList))))
 			if err == nil {
-				return wordList[n.Int64()]
+				return targetList[n.Int64()]
 			}
-			return wordList[0]
+			return targetList[0]
 		}
 		if len(d.targets) > 0 {
 			return d.targets[0]
