@@ -114,6 +114,20 @@ func (h *RoomHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+
+	// 0. Vérifier impérativement si la room existe et n'est pas fermée
+	room, err := h.roomRepo.GetRoom(ctx, roomCode)
+	if err != nil || room.Status == domain.RoomStatusClosed {
+		// Rejeter la connexion avec le code WS 4004 (Room Not Found)
+		conn, acceptErr := websocket.Accept(w, r, &websocket.AcceptOptions{
+			InsecureSkipVerify: true,
+		})
+		if acceptErr == nil {
+			_ = conn.Close(websocket.StatusCode(4004), "Room Not Found")
+		}
+		return
+	}
+
 	var userID uuid.UUID
 	var sessionData *domain.SessionData
 

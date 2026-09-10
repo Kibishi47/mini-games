@@ -131,6 +131,9 @@ func (r *RoomRepository) GetRoom(ctx context.Context, code string) (*domain.Room
 	if len(data) == 0 {
 		return nil, ErrRoomNotFound
 	}
+	if data["status"] == string(domain.RoomStatusClosed) {
+		return nil, ErrRoomNotFound
+	}
 
 	masterID, _ := uuid.Parse(data["master_id"])
 	currentRound, _ := strconv.Atoi(data["current_round"])
@@ -219,14 +222,15 @@ func (r *RoomRepository) UpdateRound(ctx context.Context, code string, round int
 
 func (r *RoomRepository) CloseRoom(ctx context.Context, code string) error {
 	pipe := r.client.Pipeline()
-	pipe.HSet(ctx, r.metaKey(code), "status", string(domain.RoomStatusClosed))
 	pipe.SRem(ctx, "rooms:active", code)
-	pipe.Expire(ctx, r.metaKey(code), 5*time.Minute)
-	pipe.Expire(ctx, r.playersKey(code), 5*time.Minute)
-	pipe.Expire(ctx, r.scoresKey(code), 5*time.Minute)
-	pipe.Expire(ctx, r.historyKey(code), 5*time.Minute)
-	pipe.Expire(ctx, r.chatKey(code), 5*time.Minute)
-	pipe.Expire(ctx, r.bansKey(code), 5*time.Minute)
+	pipe.Del(ctx,
+		r.metaKey(code),
+		r.playersKey(code),
+		r.scoresKey(code),
+		r.historyKey(code),
+		r.chatKey(code),
+		r.bansKey(code),
+	)
 	_, err := pipe.Exec(ctx)
 	return err
 }

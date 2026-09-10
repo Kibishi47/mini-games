@@ -70,9 +70,12 @@ func (w *WorkerManager) checkAFKPlayers(ctx context.Context) {
 	}
 }
 
-// runRoomGarbageCollector purge les rooms vides depuis plus de 2min ou les lobbies abandonnés depuis plus de 30min
+// runRoomGarbageCollector purge les rooms selon les critères stricts de cycle de vie :
+// - Room vide : aucun joueur connecté depuis plus de 2 minutes
+// - Lobby abandonné : room en in_lobby depuis plus de 20 minutes
+// - Partie bloquée : room en in_game sans mise à jour depuis plus de 10 minutes
 func (w *WorkerManager) runRoomGarbageCollector(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -96,30 +99,47 @@ func (w *WorkerManager) cleanInactiveRooms(ctx context.Context) {
 	for _, code := range codes {
 		room, err := w.roomRepo.GetRoom(ctx, code)
 		if err != nil {
+			// Clé ou salle déjà disparue, s'assurer qu'elle n'est plus dans rooms:active
+			_ = w.roomRepo.CloseRoom(ctx, code)
 			continue
 		}
 
 		players, _ := w.roomRepo.GetPlayers(ctx, code)
 		connectedCount := 0
+		var latestActivity time.Time = room.CreatedAt
 		for _, p := range players {
 			if p.IsConnected {
 				connectedCount++
 			}
+			if p.LastSeenAt.After(latestActivity) {
+				latestActivity = p.LastSeenAt
+			}
 		}
 
-		// 1. Room totalement vide depuis plus de 2 minutes
-		if len(players) == 0 || connectedCount == 0 {
-			if now.Sub(room.CreatedAt) > 2*time.Minute {
+		// 1. Room vide : aucun joueur connecté depuis plus de 2 minutes
+		if connectedCount == 0 {
+			if now.Sub(latestActivity) > 2*time.Minute {
 				_ = w.roomRepo.CloseRoom(ctx, code)
-				log.Printf("🧹 [GC] Salle vide %s fermée", code)
+				log.Printf("🧹 [GC] Salle vide %s fermée (inactive > 2min)", code)
 				continue
 			}
 		}
 
-		// 2. Lobby inactif abandonné depuis plus de 30 minutes
-		if room.Status == domain.RoomStatusInLobby && now.Sub(room.CreatedAt) > 30*time.Minute {
-			_ = w.roomRepo.CloseRoom(ctx, code)
-			log.Printf("🧹 [GC] Lobby abandonné %s fermé", code)
+		// 2. Lobby abandonné : statut in_lobby sans activité depuis plus de 20 minutes
+		if room.Status == domain.RoomStatusInLobby {
+			if now.Sub(latestActivity) > 20*time.Minute {
+				_ = w.roomRepo.CloseRoom(ctx, code)
+				log.Printf("🧹 [GC] Lobby abandonné %s fermé (> 20min)", code)
+				continue
+			}
+		}
+
+		// 3. Partie bloquée : statut in_game sans activité depuis plus de 10 minutes
+		if room.Status == domain.RoomStatusInGame {
+			if now.Sub(latestActivity) > 10*time.Minute {
+				_ = w.roomRepo.CloseRoom(ctx, code)
+				log.Printf("🧹 [GC] Partie bloquée %s fermée (> 10min)", code)
+			}
 		}
 	}
 }
