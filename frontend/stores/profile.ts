@@ -11,28 +11,69 @@ export const MASCOTS: { id: MascotName; name: string; color: string; desc: strin
 ]
 
 export const useProfileStore = defineStore('profile', {
-  state: () => ({
-    nickname: 'Joueur' as string,
-    mascot: 'dice' as MascotName,
-    color: '#FFD300' as string,
-    sessionToken: '' as string,
-    currentRoomCode: '' as string,
-  }),
+  state: () => {
+    let nickname = 'Joueur'
+    let mascot: MascotName = 'dice'
+    let color = '#FFD300'
+    let sessionToken = ''
+    let currentRoomCode = ''
 
-  actions: {
-    initProfile() {
-      if (process.client) {
+    if (process.client) {
+      try {
         const savedNick = localStorage.getItem('mg_nickname')
         const savedMascot = localStorage.getItem('mg_mascot') as MascotName | null
         const savedColor = localStorage.getItem('mg_color')
         const savedToken = localStorage.getItem('mg_session_token')
         const savedRoom = localStorage.getItem('mg_room_code')
 
-        if (savedNick) this.nickname = savedNick
-        if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) this.mascot = savedMascot
-        if (savedColor) this.color = savedColor
-        if (savedToken) this.sessionToken = savedToken
-        if (savedRoom) this.currentRoomCode = savedRoom
+        if (savedNick) nickname = savedNick
+        if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) mascot = savedMascot
+        if (savedColor) color = savedColor
+        if (savedToken) {
+          sessionToken = savedToken
+        } else {
+          sessionToken = crypto.randomUUID ? crypto.randomUUID() : 'sess_' + Math.random().toString(36).substring(2, 15)
+          localStorage.setItem('mg_session_token', sessionToken)
+        }
+        if (savedRoom) currentRoomCode = savedRoom
+      } catch (e) {
+        // LocalStorage non accessible
+      }
+    }
+
+    return {
+      nickname,
+      mascot,
+      color,
+      sessionToken,
+      currentRoomCode,
+      isHydrated: process.client,
+    }
+  },
+
+  actions: {
+    initProfile() {
+      if (process.client) {
+        try {
+          const savedNick = localStorage.getItem('mg_nickname')
+          const savedMascot = localStorage.getItem('mg_mascot') as MascotName | null
+          const savedColor = localStorage.getItem('mg_color')
+          let savedToken = localStorage.getItem('mg_session_token')
+          const savedRoom = localStorage.getItem('mg_room_code')
+
+          if (savedNick) this.nickname = savedNick
+          if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) this.mascot = savedMascot
+          if (savedColor) this.color = savedColor
+          if (!savedToken) {
+            savedToken = crypto.randomUUID ? crypto.randomUUID() : 'sess_' + Math.random().toString(36).substring(2, 15)
+            localStorage.setItem('mg_session_token', savedToken)
+          }
+          this.sessionToken = savedToken
+          if (savedRoom) this.currentRoomCode = savedRoom
+          this.isHydrated = true
+        } catch (e) {
+          // ignore
+        }
       }
     },
 

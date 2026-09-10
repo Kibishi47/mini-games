@@ -12,6 +12,7 @@ export function useWebSocket(roomCode: string) {
 
   const socket = ref<WebSocket | null>(null)
   const isConnected = ref(false)
+  const isInitializing = ref(true)
   const errorMessage = ref<string | null>(null)
   let reconnectTimer: any = null
 
@@ -21,6 +22,9 @@ export function useWebSocket(roomCode: string) {
     if (socket.value) {
       socket.value.close()
     }
+
+    // Toujours s'assurer que le profil est hydraté avec son session_token avant de connecter
+    profileStore.initProfile()
 
     const wsBase = config.public.wsUrl || 'ws://localhost:8080/ws'
     const query = new URLSearchParams({
@@ -54,11 +58,23 @@ export function useWebSocket(roomCode: string) {
 
     ws.onclose = (event) => {
       isConnected.value = false
-      // Reconnexion automatique pour la Grace Period de 45 secondes si non fermé volontairement
+      
+      // Code 4004 : Room Not Found / Fermée pour inactivité
+      if (event.code === 4004) {
+        isInitializing.value = false
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        router.push({
+          path: '/',
+          query: { error: 'room_closed' },
+        })
+        return
+      }
+
+      // Reconnexion automatique pour la Grace Period si non fermé volontairement
       if (!event.wasClean) {
         reconnectTimer = setTimeout(() => {
           connect()
-        }, 2000)
+        }, 1500)
       }
     }
 
@@ -69,6 +85,7 @@ export function useWebSocket(roomCode: string) {
     switch (type) {
       case 'room:sync':
         roomStore.setRoom(payload)
+        isInitializing.value = false
         break
 
       case 'room:state_changed':
@@ -183,6 +200,7 @@ export function useWebSocket(roomCode: string) {
   return {
     socket,
     isConnected,
+    isInitializing,
     errorMessage,
     send,
     sendChatMessage,

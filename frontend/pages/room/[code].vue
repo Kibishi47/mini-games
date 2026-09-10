@@ -1,5 +1,23 @@
 <template>
-  <div class="min-h-screen bg-board-cream text-ink-black flex flex-col justify-between selection:bg-game-yellow selection:text-ink-black">
+  <!-- Écran de chargement / Reconnexion Pop Moderniste (élimine tout flash de profil par défaut au F5) -->
+  <div v-if="isInitializing" class="min-h-screen bg-board-cream text-ink-black flex flex-col items-center justify-center p-6 select-none">
+    <div class="bg-board-white p-8 rounded-3xl border-[4px] border-ink-black shadow-pop-lg flex flex-col items-center text-center max-w-sm w-full space-y-4">
+      <GameMascot :name="profileStore.mascot || 'dice'" mood="running" size="lg" class="animate-bounce" />
+      <div>
+        <h2 class="font-display font-black text-2xl uppercase tracking-tight text-ink-black">
+          Reconnexion à la salle…
+        </h2>
+        <p class="font-condensed text-xs uppercase text-game-blue font-bold tracking-wider mt-1">
+          Salle {{ roomCode }}
+        </p>
+      </div>
+      <div class="w-full h-3 bg-board-cream rounded-full border-2 border-ink-black overflow-hidden p-0.5">
+        <div class="h-full bg-game-yellow rounded-full animate-pulse w-full" />
+      </div>
+    </div>
+  </div>
+
+  <div v-else class="min-h-screen bg-board-cream text-ink-black flex flex-col justify-between selection:bg-game-yellow selection:text-ink-black">
     <!-- Navbar Salle Pop Moderniste -->
     <header class="border-b-[4px] border-ink-black bg-board-white sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-6 h-20 py-3 flex items-center justify-between">
@@ -350,6 +368,7 @@ profileStore.initProfile()
 // Initialisation WebSocket
 const {
   isConnected,
+  isInitializing,
   errorMessage,
   sendChatMessage,
   updateSettings,

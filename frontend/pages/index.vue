@@ -35,7 +35,18 @@
           </div>
         </div>
       </div>
-    </header>
+    <!-- Message d'alerte Pop Moderniste si salle fermée ou expirée -->
+    <div v-if="closedRoomAlert" class="max-w-2xl mx-auto mt-6 px-6 w-full">
+      <div class="bg-game-yellow text-ink-black font-display font-black text-sm px-6 py-3.5 rounded-2xl border-[3.5px] border-ink-black shadow-pop-md flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <AlertTriangle class="w-6 h-6 text-game-red flex-shrink-0" />
+          <span>Cette room n'existe plus ou a été fermée pour inactivité.</span>
+        </div>
+        <button @click="closedRoomAlert = false" class="text-ink-black hover:text-game-red font-black text-base ml-4">
+          ✕
+        </button>
+      </div>
+    </div>
 
     <!-- Corps de la page d'accueil -->
     <main class="max-w-7xl mx-auto px-6 py-10 flex-1 flex flex-col items-center justify-center w-full">
@@ -178,7 +189,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { UserCircle, Sparkles, Play, LogIn } from 'lucide-vue-next'
+import { UserCircle, Sparkles, Play, LogIn, AlertTriangle } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore, MASCOTS } from '~/stores/profile'
 import type { MascotName } from '~/components/ui/GameMascot.vue'
 import AppCard from '~/components/ui/AppCard.vue'
@@ -189,16 +201,21 @@ import GameMascot from '~/components/ui/GameMascot.vue'
 
 const profileStore = useProfileStore()
 const config = useRuntimeConfig()
+const route = useRoute()
 const router = useRouter()
 
 const inputNickname = ref('')
 const inputRoomCode = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
+const closedRoomAlert = ref(false)
 
 onMounted(() => {
   profileStore.initProfile()
   inputNickname.value = profileStore.nickname
+  if (route.query.error === 'room_closed') {
+    closedRoomAlert.value = true
+  }
 })
 
 const activeMascotInfo = computed(() => {
