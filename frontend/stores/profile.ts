@@ -12,11 +12,12 @@ export const MASCOTS: { id: MascotName; name: string; color: string; desc: strin
 
 export const useProfileStore = defineStore('profile', {
   state: () => {
-    let nickname = 'Joueur'
-    let mascot: MascotName = 'dice'
+    let nickname = ''
+    let mascot: MascotName | '' = ''
     let color = '#FFD300'
     let sessionToken = ''
     let currentRoomCode = ''
+    let isReady = false
 
     if (process.client) {
       try {
@@ -27,7 +28,11 @@ export const useProfileStore = defineStore('profile', {
         const savedRoom = localStorage.getItem('mg_room_code')
 
         if (savedNick) nickname = savedNick
-        if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) mascot = savedMascot
+        if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) {
+          mascot = savedMascot
+        } else if (savedMascot) {
+          mascot = 'dice'
+        }
         if (savedColor) color = savedColor
         if (savedToken) {
           sessionToken = savedToken
@@ -36,18 +41,20 @@ export const useProfileStore = defineStore('profile', {
           localStorage.setItem('mg_session_token', sessionToken)
         }
         if (savedRoom) currentRoomCode = savedRoom
+        isReady = true
       } catch (e) {
         // LocalStorage non accessible
       }
     }
 
     return {
-      nickname,
-      mascot,
+      nickname: nickname || 'Joueur',
+      mascot: mascot as MascotName | '',
       color,
       sessionToken,
       currentRoomCode,
-      isHydrated: process.client,
+      isHydrated: isReady,
+      isReady,
     }
   },
 
@@ -61,8 +68,12 @@ export const useProfileStore = defineStore('profile', {
           let savedToken = localStorage.getItem('mg_session_token')
           const savedRoom = localStorage.getItem('mg_room_code')
 
-          if (savedNick) this.nickname = savedNick
-          if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) this.mascot = savedMascot
+          this.nickname = savedNick || this.nickname || 'Joueur'
+          if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) {
+            this.mascot = savedMascot
+          } else if (!this.mascot) {
+            this.mascot = 'dice'
+          }
           if (savedColor) this.color = savedColor
           if (!savedToken) {
             savedToken = crypto.randomUUID ? crypto.randomUUID() : 'sess_' + Math.random().toString(36).substring(2, 15)
@@ -71,6 +82,7 @@ export const useProfileStore = defineStore('profile', {
           this.sessionToken = savedToken
           if (savedRoom) this.currentRoomCode = savedRoom
           this.isHydrated = true
+          this.isReady = true
         } catch (e) {
           // ignore
         }

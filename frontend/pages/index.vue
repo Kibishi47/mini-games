@@ -24,7 +24,13 @@
 
         <!-- Profil Invité en direct -->
         <div class="flex items-center space-x-3 border-[3px] border-ink-black bg-board-white px-4 py-2 rounded-2xl shadow-pop-xs">
-          <GameMascot :name="profileStore.mascot" mood="idle" size="sm" />
+          <ClientOnly>
+            <GameMascot v-if="profileStore.isReady && profileStore.mascot" :name="profileStore.mascot" mood="idle" size="sm" />
+            <div v-else class="w-8 h-8 opacity-0" />
+            <template #fallback>
+              <div class="w-8 h-8 opacity-0" />
+            </template>
+          </ClientOnly>
           <div class="text-left">
             <div class="font-display font-black text-sm text-ink-black uppercase leading-tight">
               {{ profileStore.nickname }}

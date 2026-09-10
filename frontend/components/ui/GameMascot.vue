@@ -1,6 +1,7 @@
 <template>
-  <div :class="['inline-block select-none relative', sizeClass, animationClass]">
+  <div :class="['inline-block select-none relative', sizeClass, animationClass, !name ? 'opacity-0' : '']">
     <svg
+      v-if="name"
       viewBox="0 0 100 100"
       class="w-full h-full overflow-visible"
       xmlns="http://www.w3.org/2000/svg"
@@ -212,12 +213,12 @@ export type MascotSize = 'sm' | 'md' | 'lg' | 'xl'
 
 const props = withDefaults(
   defineProps<{
-    name?: MascotName
+    name?: MascotName | ''
     mood?: MascotMood
     size?: MascotSize
   }>(),
   {
-    name: 'dice',
+    name: '',
     mood: 'idle',
     size: 'md',
   }

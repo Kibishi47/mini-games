@@ -70,7 +70,13 @@
         <!-- Profil Joueur Connecté & Quitter -->
         <div class="flex items-center space-x-3">
           <div class="flex items-center space-x-2 border-2 border-ink-black bg-board-white px-3 py-1.5 rounded-xl shadow-pop-xs">
-            <GameMascot :name="profileStore.mascot" mood="idle" size="sm" />
+            <ClientOnly>
+              <GameMascot v-if="profileStore.isReady && profileStore.mascot" :name="profileStore.mascot" mood="idle" size="sm" />
+              <div v-else class="w-8 h-8 opacity-0" />
+              <template #fallback>
+                <div class="w-8 h-8 opacity-0" />
+              </template>
+            </ClientOnly>
             <div class="text-left">
               <div class="font-display font-black text-xs uppercase text-ink-black leading-tight">
                 {{ profileStore.nickname }}
