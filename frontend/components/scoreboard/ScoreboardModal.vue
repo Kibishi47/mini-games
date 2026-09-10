@@ -2,6 +2,15 @@
   <div v-if="gameStore.showRoundSummary" class="fixed inset-0 bg-ink-black/80 backdrop-blur-none flex items-center justify-center z-50 p-4">
     <div class="bg-board-white max-w-2xl w-full p-6 sm:p-8 rounded-3xl border-[4px] border-ink-black shadow-pop-lg relative flex flex-col space-y-6">
       
+      <!-- Bouton de fermeture modale (X) -->
+      <button
+        @click="closeModal"
+        class="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-xl border-2 border-ink-black bg-board-cream hover:bg-game-red hover:text-board-white text-ink-black font-black transition-none shadow-pop-xs active:translate-x-[2px] active:translate-y-[2px]"
+        title="Fermer la fenêtre (inspecter le plateau / chat)"
+      >
+        <X class="w-5 h-5" />
+      </button>
+
       <!-- Titre et Mot Secret Révélé -->
       <div class="text-center space-y-2">
         <div class="inline-flex items-center space-x-2 border-2 border-ink-black px-3 py-1 rounded-full bg-game-pink font-condensed text-xs uppercase mb-1">
@@ -67,7 +76,7 @@
         </div>
       </div>
 
-      <!-- Actions : Copier Émojis & Revanche Master -->
+      <!-- Actions : Copier Émojis, Fermer & Revanche Master -->
       <div class="flex flex-col sm:flex-row gap-3 pt-2">
         <AppButton
           variant="neutral"
@@ -80,18 +89,32 @@
         </AppButton>
 
         <AppButton
+          variant="neutral"
+          size="md"
+          class="sm:w-32"
+          @click="closeModal"
+        >
+          <span>Fermer ✕</span>
+        </AppButton>
+
+        <!-- Bouton Master : Retour au Lobby -->
+        <AppButton
           v-if="gameStore.isGameOver && isMaster"
           variant="success"
           size="md"
           class="flex-1"
-          @click="onRematch"
+          @click="onReturnLobby"
         >
           <RotateCcw class="w-5 h-5 mr-2" />
-          <span>Lancer la Revanche 🔄</span>
+          <span>Retourner au Lobby 🔄</span>
         </AppButton>
       </div>
 
-      <div v-if="!gameStore.isGameOver" class="text-center font-display font-bold text-xs uppercase text-ink-black/60">
+      <!-- En attente du Master (joueurs normaux si fin de partie) -->
+      <div v-if="gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-game-blue animate-pulse">
+        ⏳ En attente du Master pour retourner au Lobby...
+      </div>
+      <div v-else-if="!gameStore.isGameOver" class="text-center font-display font-bold text-xs uppercase text-ink-black/60">
         La manche suivante commence dans un instant...
       </div>
     </div>
@@ -100,7 +123,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Trophy, Share2, RotateCcw } from 'lucide-vue-next'
+import { Trophy, Share2, RotateCcw, X } from 'lucide-vue-next'
 import { useGameStore } from '~/stores/game'
 import { useRoomStore } from '~/stores/room'
 import GameMascot from '~/components/ui/GameMascot.vue'
@@ -108,12 +131,17 @@ import AppButton from '~/components/ui/AppButton.vue'
 
 defineProps<{
   isMaster: boolean
-  onRematch: () => void
+  onRematch?: () => void
+  onReturnLobby?: () => void
 }>()
 
 const gameStore = useGameStore()
 const roomStore = useRoomStore()
 const copied = ref(false)
+
+const closeModal = () => {
+  gameStore.showRoundSummary = false
+}
 
 const scoreboardPlayers = computed(() => {
   return [...roomStore.players].sort((a, b) => b.score - a.score)
