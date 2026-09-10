@@ -71,6 +71,16 @@ export function useWebSocket(roomCode: string) {
         roomStore.setRoom(payload)
         break
 
+      case 'room:state_changed':
+        if (payload?.status) {
+          roomStore.updateStatus(payload.status)
+        }
+        break
+
+      case 'player:reconnected':
+        // Joueur reconnecté
+        break
+
       case 'room:chat_history':
         roomStore.setChatHistory(payload)
         break
@@ -147,6 +157,14 @@ export function useWebSocket(roomCode: string) {
     send('room:rematch', {})
   }
 
+  const stopGame = () => {
+    send('game:stop', {})
+  }
+
+  const returnToLobby = () => {
+    send('room:return_lobby', {})
+  }
+
   onMounted(() => {
     connect()
   })
@@ -166,6 +184,8 @@ export function useWebSocket(roomCode: string) {
     sendChatMessage,
     updateSettings,
     startGame,
+    stopGame,
+    returnToLobby,
     submitGuess,
     kickPlayer,
     banPlayer,

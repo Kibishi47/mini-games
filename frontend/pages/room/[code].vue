@@ -20,8 +20,8 @@
           </div>
         </div>
 
-        <!-- Statut Manche / Chronomètre si En Jeu -->
-        <div v-if="roomStore.currentRoom?.status === 'in_game'" class="flex items-center space-x-4">
+        <!-- Statut Manche / Chronomètre si En Jeu + Bouton Master Arrêter la partie -->
+        <div v-if="roomStore.currentRoom?.status === 'in_game'" class="flex items-center space-x-3">
           <div class="border-2 border-ink-black px-3 py-1 rounded-xl bg-game-yellow font-condensed font-black text-sm uppercase shadow-pop-xs">
             Manche {{ gameStore.currentRound }}/{{ gameStore.maxRounds }}
           </div>
@@ -34,6 +34,19 @@
             <Clock class="w-4 h-4" />
             <span>{{ remainingSeconds }}s</span>
           </div>
+
+          <!-- Bouton Master : Arrêter la partie immédiatement -->
+          <AppButton
+            v-if="roomStore.isMaster"
+            variant="danger"
+            size="sm"
+            class="hidden sm:inline-flex"
+            @click="confirmStopGame"
+            title="Arrêter la partie et retourner au lobby"
+          >
+            <Square class="w-4 h-4 mr-1.5 fill-current" />
+            <span>Arrêter la partie</span>
+          </AppButton>
         </div>
 
         <!-- Profil Joueur Connecté & Quitter -->
@@ -299,13 +312,14 @@
     <ScoreboardModal
       :is-master="roomStore.isMaster"
       :on-rematch="rematch"
+      :on-return-lobby="returnToLobby"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { Copy, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle } from 'lucide-vue-next'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { Copy, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
@@ -329,6 +343,9 @@ const profileStore = useProfileStore()
 const roomStore = useRoomStore()
 const gameStore = useGameStore()
 
+// Initialisation immédiate du profil avant la connexion WS
+profileStore.initProfile()
+
 // Initialisation WebSocket
 const {
   isConnected,
@@ -336,12 +353,27 @@ const {
   sendChatMessage,
   updateSettings,
   startGame,
+  stopGame,
+  returnToLobby,
   submitGuess,
   kickPlayer,
   banPlayer,
   mutePlayer,
   rematch,
 } = useWebSocket(roomCode.value)
+
+// Fermer automatiquement la modale de fin de partie dès qu'on revient au lobby
+watch(() => roomStore.currentRoom?.status, (newStatus) => {
+  if (newStatus === 'in_lobby') {
+    gameStore.showRoundSummary = false
+  }
+})
+
+const confirmStopGame = () => {
+  if (confirm('Voulez-vous vraiment arrêter la partie en cours et ramener tout le monde au lobby ?')) {
+    stopGame()
+  }
+}
 
 const masterPlayer = computed(() => roomStore.masterPlayer)
 

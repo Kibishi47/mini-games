@@ -75,7 +75,62 @@ func (m *WordleGameManager) HandleGameAction(client *ws.Client, action string, p
 		m.handleGuess(ctx, client, payload)
 	case "game:get_state":
 		m.handleGetState(client)
+	case "game:stop", "room:return_lobby", "room:rematch":
+		m.handleStopOrReturnLobby(ctx, client, action)
 	}
+}
+
+func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client *ws.Client, action string) {
+	room, err := m.roomRepo.GetRoom(ctx, client.RoomCode())
+	if err != nil {
+		client.SendError("Salle introuvable")
+		return
+	}
+
+	if room.MasterID != client.UserID() {
+		client.SendError("Action réservée au Master")
+		return
+	}
+
+	// 1. Stopper la manche en cours
+	m.mu.Lock()
+	if round, exists := m.activeRounds[client.RoomCode()]; exists {
+		round.IsCompleted = true
+		delete(m.activeRounds, client.RoomCode())
+	}
+	m.mu.Unlock()
+
+	// 2. Mettre à jour l'état de la salle dans Redis
+	_ = m.roomRepo.UpdateRoomStatus(ctx, client.RoomCode(), domain.RoomStatusInLobby)
+	_ = m.roomRepo.SetSecretWord(ctx, client.RoomCode(), "")
+	_ = m.roomRepo.UpdateRound(ctx, client.RoomCode(), 0, nil)
+
+	// 3. Réintégrer les spectateurs en joueurs
+	players, _ := m.roomRepo.GetPlayers(ctx, client.RoomCode())
+	for _, p := range players {
+		if p.IsSpectator {
+			_ = m.roomRepo.SetPlayerSpectator(ctx, client.RoomCode(), p.ID, false)
+		}
+	}
+
+	// 4. Broadcaster room:state_changed et room:sync
+	statePayload, _ := json.Marshal(map[string]interface{}{
+		"status": domain.RoomStatusInLobby,
+	})
+	m.hub.BroadcastToRoom(client.RoomCode(), domain.WSMessage{
+		Type:    "room:state_changed",
+		Payload: statePayload,
+	})
+
+	if action == "game:stop" {
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "🛑 Le Master a arrêté la partie et ramené tout le monde au lobby.")
+	} else if action == "room:rematch" {
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "🔄 Le Master a relancé la salle en Lobby pour une revanche !")
+	} else {
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "↩️ Le Master a ramené la salle au Lobby.")
+	}
+
+	m.hub.SyncRoom(client.RoomCode())
 }
 
 func (m *WordleGameManager) handleStartGame(ctx context.Context, client *ws.Client) {
