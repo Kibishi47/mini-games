@@ -17,7 +17,7 @@
     <!-- Liste des Messages & Événements Système -->
     <div ref="messagesContainer" class="flex-1 p-4 overflow-y-auto space-y-3 bg-board-cream">
       <div
-        v-for="(msg, idx) in roomStore.chatMessages"
+        v-for="msg in roomStore.chatMessages"
         :key="msg.id"
       >
         <!-- Message Système : Pilule bicolore centrée -->
@@ -29,7 +29,7 @@
 
         <!-- Message Utilisateur : Bulle blanche bordée de noir avec mascotte -->
         <div v-else class="flex items-start space-x-3">
-          <GameMascot :name="getMascotName(idx)" mood="idle" size="sm" class="mt-1 flex-shrink-0" />
+          <GameMascot :name="(msg.mascot as any) || 'dice'" mood="idle" size="sm" class="mt-1 flex-shrink-0" />
 
           <div class="flex-1 min-w-0">
             <div class="flex items-baseline space-x-2">
@@ -46,7 +46,7 @@
       </div>
     </div>
 
-    <!-- Si le joueur est muté : bandeau d'alerte rouge avec mascotte muette -->
+    <!-- Si le joueur est muté : bandeau d'alerte rouge -->
     <div v-if="isMuted" class="bg-game-red text-board-white border-t-[3px] border-ink-black px-4 py-2 flex items-center justify-center space-x-2 font-display font-black text-xs uppercase">
       <VolumeX class="w-4 h-4" />
       <span>Vous êtes actuellement muet sur ordre du Master !</span>
@@ -61,9 +61,9 @@
       <input
         v-model="inputContent"
         type="text"
-        placeholder="Écrire une réplique..."
-        maxlength="200"
-        class="flex-1 bg-board-cream border-2 border-ink-black rounded-xl px-4 py-2.5 text-sm font-body font-semibold text-ink-black placeholder:text-ink-black/40 focus:outline-none focus:shadow-pop-xs transition-none"
+        placeholder="Écrire un message..."
+        maxlength="300"
+        class="flex-1 bg-board-cream border-2 border-ink-black rounded-xl px-4 py-2 text-sm font-body font-semibold text-ink-black placeholder:text-ink-black/40 focus:outline-none focus:shadow-pop-xs transition-none"
       />
 
       <AppButton
@@ -82,8 +82,7 @@
 import { ref, watch, computed, nextTick } from 'vue'
 import { MessageSquare, Send, VolumeX } from 'lucide-vue-next'
 import { useRoomStore } from '~/stores/room'
-import { useAuthStore } from '~/stores/auth'
-import GameMascot, { type MascotName } from '~/components/ui/GameMascot.vue'
+import GameMascot from '~/components/ui/GameMascot.vue'
 import AppButton from '~/components/ui/AppButton.vue'
 import AppBadge from '~/components/ui/AppBadge.vue'
 
@@ -92,16 +91,11 @@ const props = defineProps<{
 }>()
 
 const roomStore = useRoomStore()
-const authStore = useAuthStore()
 const inputContent = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 
-const mascotPool: MascotName[] = ['dice', 'domino', 'card', 'knight', 'd20', 'meeple']
-const getMascotName = (idx: number): MascotName => mascotPool[idx % mascotPool.length]
-
 const isMuted = computed(() => {
-  const me = roomStore.players.find(p => p.user_id === authStore.user?.id)
-  return me?.is_muted ?? false
+  return roomStore.me?.is_muted ?? false
 })
 
 const handleSend = () => {

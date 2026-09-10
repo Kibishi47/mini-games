@@ -1,41 +1,42 @@
 # 🎮 MiniGames - Plateforme Multijoueur Temps Réel (Wordle)
 
-Plateforme web desktop de jeux multijoueur compétitifs en temps réel avec moteur **Server-Authoritative** ultra-robuste en **Go 1.23+**, interface réactive en **Nuxt 3**, et persistance hybride **PostgreSQL + Redis**.
+Plateforme web desktop de jeux multijoueur compétitifs en temps réel avec moteur **Server-Authoritative** ultra-robuste en **Go 1.23+**, interface réactive en **Nuxt 3**, et état temps réel **100% Redis 7**.
 
-Développé selon les standards Staff Engineer : machine à états stricte, pas de ready-check (autorité Master), state-masking des tuiles adverses, grace period de 45s en cas de coupure réseau, et orchestration unifiée `make`.
+Le projet adopte la philosophie des jeux viraux instantanés (type Skribbl.io ou Codenames) : **zéro compte, zéro mot de passe, zéro base de données SQL**. Tout repose sur un mode Invité (Guest) persistant localement sur le client, un état temps réel ultra-rapide géré dans Redis, et un binaire Go compilé ultra-léger.
 
 ---
 
 ## 🌟 Fonctionnalités Clés
 
-* **Moteur Server-Authoritative** :
-  * Évaluation officielle Wordle avec gestion exacte des doublons.
-  * **State Masking** : la solution reste secrète côté serveur ; les autres joueurs reçoivent les tuiles colorées en direct sans les lettres.
-  * **Chronomètre absolu (`ends_at`)** : calcul côté client pour neutraliser la latence réseau.
-  * **Scoreboard de session & Revanche (`Rematch`)** : cumul des points manche par manche et relance sans perte d'historique.
+* **Zéro friction / 100% Mode Invité** :
+  * Pseudo + choix parmi 6 mascottes vectorielles SVG animées (`dice`, `domino`, `card`, `knight`, `d20`, `meeple`).
+  * Persistance locale via `localStorage`.
+* **Moteur Server-Authoritative Wordle (3 à 8 lettres)** :
+  * Dictionnaires français complets embarqués à la compilation via `//go:embed` (plus de 51 000 mots valides, 4 300 cibles usuelles du quotidien).
+  * Validation $O(1)$ et tirage aléatoire par longueur.
+  * **State Masking strict** : les tuiles des concurrents sont diffusées en direct sans les lettres (couleurs uniquement).
+  * **Chronomètre absolu (`ends_at`)** : compte à rebours client précis insensible à la latence réseau.
   * **Partage viral émojis** (🟩🟨⬛) copiable en 1 clic.
-* **Résilience & Temps Réel** :
-  * **Grace Period de 45 secondes** : tolérance aux micro-coupures et aux rechargements de page (F5) sans éjection ni perte de score.
-  * **Mode Spectateur automatique** : tout joueur arrivant en cours de partie entre en spectateur passif et intègre la manche suivante.
+* **Résilience & Reconnexion (Grace Period)** :
+  * **Période de grâce de 45 secondes** : tolérance aux rechargements de page (F5) et micro-coupures réseau grâce aux sessions éphémères Redis avec TTL de 45s.
+  * **Mode Spectateur automatique** : tout joueur arrivant en cours de manche observe et intègre automatiquement la manche suivante.
   * **Passation automatique de Master** : si le créateur quitte, le joueur le plus ancien hérite instantanément des privilèges.
-  * **Modération Master** : kick, ban temporaire (30 min) et mute d'un joueur, avec interdiction stricte de se cibler soi-même.
-* **Authentification Flexible** :
-  * **Mode Invité (Guest) 1-clic** avec pseudonyme automatique ou personnalisé.
-  * **Compte Local** sécurisé avec sel et hachage **Argon2id**.
-  * **Discord OAuth2** prêt à l'emploi.
-  * Conversion 1-clic d'un compte invité en compte permanent.
+  * **Modération Master** : exclusion (`kick`), bannissement (`ban`), et silence (`mute`).
+  * **Boucle de Revanche (`Rematch`)** : retour au lobby en conservant les scores cumulés de la session.
+* **Direction Artistique Pop Moderniste** :
+  * Aplats francs, encrage noir épais, ombres portées dures décalées (*hard shadows*), zéro dégradé, zéro ombre floue.
 * **Workers d'arrière-plan Go** :
-  * Détecteur d'inactivité AFK (timeout et délai de grâce).
-  * Garbage Collector de salles (fermeture et purge après 30 min d'inactivité ou 2 min sans joueur).
+  * Surveillance continue des heartbeats et timeout des joueurs déconnectés.
+  * Garbage Collector de salles (fermeture automatique après 30 min d'inactivité ou 2 min sans joueur).
 
 ---
 
 ## 🛠️ Stack Technique
 
-* **Backend** : Go 1.23+, routeur Chi, WebSocket (`nhooyr/websocket`), `pgx/v5`, `go-redis/v9`, `argon2`, `golang-jwt`.
+* **Backend** : Go 1.23+, routeur Chi, WebSocket (`nhooyr/websocket`), `go-redis/v9`.
 * **Frontend** : Nuxt 3 (TypeScript strict, Nitro, Tailwind CSS, Pinia, Lucide Icons).
-* **Bases de données** : PostgreSQL 16 & Redis 7.
-* **DevOps** : Docker multi-stage (Alpine/Distroless non-root), Docker Compose, Air (rechargement à chaud Go), Makefile.
+* **Base de données / Cache** : **Redis 7 uniquement** (aucun PostgreSQL).
+* **DevOps** : Docker multi-stage (Alpine non-root), Docker Compose, Makefile.
 
 ---
 
@@ -45,15 +46,13 @@ Développé selon les standards Staff Engineer : machine à états stricte, pas 
 * Docker et Docker Compose
 * Make
 
-### 1. Lancer l'environnement de production en local
+### 1. Lancer l'environnement de production en local (ou Coolify)
 ```bash
 make up
 ```
 Cette commande unique :
-1. Démarre PostgreSQL, Redis, le Backend Go et le Frontend Nuxt.
-2. Applique automatiquement les migrations SQL PostgreSQL.
-3. Injecte les dictionnaires et utilisateurs de démonstration (`admin` et `champion`).
-4. Rend le frontend disponible sur **http://localhost:3000** et l'API sur **http://localhost:8080**.
+1. Démarre Redis 7, le Backend Go et le Frontend Nuxt.
+2. Rend le frontend disponible sur **http://localhost:3000** et l'API sur **http://localhost:8080**.
 
 ### 2. Lancer l'environnement de développement avec Hot-Reload
 ```bash
@@ -64,56 +63,58 @@ make dev
 
 ### Autres commandes Make utiles :
 ```bash
-make down     # Stoppe et nettoie les conteneurs
-make migrate  # Exécute les migrations de schéma SQL
-make seed     # Injecte les données de test
-make test     # Lance la suite de tests unitaires Go
-make logs     # Affiche les logs en continu
+make down        # Stoppe et nettoie les conteneurs
+make test        # Lance la suite de tests unitaires Go
+make dictionary  # Régénère les dictionnaires français depuis Lexique 383
+make logs        # Affiche les logs en continu
 ```
 
 ---
 
 ## 🌐 Déploiement Continu sur VPS avec Coolify
 
-Le projet est nativement conçu pour un déploiement zero-friction sur **Coolify** via `docker-compose.yml` :
+Le projet est nativement configuré pour **Coolify** via `docker-compose.yml` (3 services orchestrés : `frontend`, `backend`, `redis`) :
 
-1. Sur votre instance Coolify, créez un nouveau projet et sélectionnez **Docker Compose**.
-2. Liez ce dépôt GitHub.
+1. Sur votre instance Coolify, créez une nouvelle ressource **Docker Compose**.
+2. Liez ce dépôt GitHub (branche `dev` ou `main`).
 3. Renseignez les variables d'environnement dans l'interface Coolify (copiez depuis `.env.example`) :
-   * `POSTGRES_PASSWORD`
-   * `JWT_SECRET` (clé sécurisée de 32 caractères minimum)
-   * `FRONTEND_URL` (votre nom de domaine public)
-   * `DISCORD_CLIENT_ID` et `DISCORD_CLIENT_SECRET` (optionnels)
-4. Cliquez sur **Deploy** : Coolify compile les deux Dockerfiles multi-stage, vérifie les healthchecks stricts et démarre la stack de manière isolée avec volumes persistants `pg_data` et `redis_data`.
+   * `FRONTEND_URL` (votre URL publique de frontend)
+   * `NUXT_PUBLIC_API_URL` (URL publique de l'API)
+   * `NUXT_PUBLIC_WS_URL` (URL publique WebSocket)
+4. Cliquez sur **Deploy** : Coolify compile les conteneurs, applique les healthchecks stricts et démarre les 3 services avec volume persistant `redis_data`.
 
 ---
 
 ## 🧪 Structure du Projet
 
-```
+```text
 .
 ├── Makefile                     # Commandes unifiées (make up, make dev, etc.)
-├── docker-compose.yml           # Déploiement production / Coolify
+├── docker-compose.yml           # Déploiement production / Coolify (3 services)
 ├── docker-compose.dev.yml       # Environnement dev local avec Air et HMR
 ├── backend/
-│   ├── Dockerfile               # Build multi-stage Go Alpine léger
-│   ├── cmd/api/main.go          # Point d'entrée Chi, WS, DBs & Workers
-│   ├── internal/
-│   │   ├── config/              # Configuration env
-│   │   ├── domain/              # Entités User, Room, GameState, WSMessage
-│   │   ├── repository/postgres/ # Pools pgx/v5 & migrations
-│   │   ├── repository/redis/    # Clés Redis, présences, chat & ratelimit
-│   │   ├── service/auth/        # Argon2id, JWT, Invité & Discord
-│   │   ├── service/room/        # FSM Lobby/Game/Closed, Master passation
-│   │   ├── service/games/wordle/# Dictionnaires FR/EN, State-Masking, Evaluator
-│   │   ├── transport/http/      # Handlers Chi & Middlewares
-│   │   ├── transport/ws/        # Hub WebSocket, Client & Dispatcher
-│   │   └── worker/              # Worker AFK & Inactivity GC
-│   └── migrations/              # Schémas PostgreSQL versionnés
+│   ├── Dockerfile               # Build multi-stage Go Alpine avec dictionnaires
+│   ├── cmd/api/main.go          # Point d'entrée Chi, WS, Redis & Workers
+│   ├── cmd/tools/dictionary/    # Générateur autonome de dictionnaire
+│   └── internal/
+│       ├── config/              # Configuration & variables d'environnement
+│       ├── domain/              # Modèles métier & structures d'événements
+│       ├── repository/redis/    # Implémentation Redis (rooms, sessions, chat)
+│       ├── service/room/        # Logique de salon & gouvernance
+│       ├── service/games/wordle/# Moteur Wordle (3-8 lettres, //go:embed)
+│       ├── transport/http/      # Handlers REST légers
+│       ├── transport/ws/        # Hub WebSocket, dispatch & heartbeat
+│       └── worker/              # Workers d'inactivité et garbage collector
 └── frontend/
-    ├── Dockerfile               # Build multi-stage Node / Nitro production
-    ├── pages/                   # Index, Lobby, Room
-    ├── stores/                  # Pinia auth, room, game
-    ├── components/              # ChatPanel, WordleGrid, OpponentPreview, ScoreboardModal
-    └── composables/             # useWebSocket avec reconnexion automatique
+    ├── Dockerfile               # Build multi-stage Nuxt 3 Nitro
+    ├── pages/
+    │   ├── index.vue            # Accueil, profil invité, créer/rejoindre
+    │   └── room/[code].vue      # Vue unique de salle (Lobby, Jeu, Fin)
+    ├── components/
+    │   ├── ui/                  # AppButton, AppCard, AppBadge, AppInput, GameMascot
+    │   ├── wordle/              # WordleGrid, OpponentPreview
+    │   ├── chat/                # ChatPanel
+    │   └── scoreboard/          # ScoreboardModal
+    ├── stores/                  # Stores Pinia (profile, room, game)
+    └── composables/             # useWebSocket
 ```

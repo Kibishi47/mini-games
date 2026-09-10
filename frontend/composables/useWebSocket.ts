@@ -1,10 +1,10 @@
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useAuthStore } from '~/stores/auth'
+import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
 import { useGameStore } from '~/stores/game'
 
 export function useWebSocket(roomCode: string) {
-  const authStore = useAuthStore()
+  const profileStore = useProfileStore()
   const roomStore = useRoomStore()
   const gameStore = useGameStore()
   const config = useRuntimeConfig()
@@ -13,17 +13,25 @@ export function useWebSocket(roomCode: string) {
   const socket = ref<WebSocket | null>(null)
   const isConnected = ref(false)
   const errorMessage = ref<string | null>(null)
-  let reconnectTimer: NodeJS.Timeout | null = null
+  let reconnectTimer: any = null
 
   const connect = () => {
-    if (!authStore.token || !roomCode) return
+    if (!roomCode) return
 
-    // Fermer une socket existante si nécessaire
     if (socket.value) {
       socket.value.close()
     }
 
-    const wsUrl = `${config.public.wsUrl}?token=${encodeURIComponent(authStore.token)}&room=${encodeURIComponent(roomCode)}`
+    const wsBase = config.public.wsUrl || 'ws://localhost:8080/ws'
+    const query = new URLSearchParams({
+      room: roomCode,
+      token: profileStore.sessionToken || '',
+      nickname: profileStore.nickname || 'Joueur',
+      mascot: profileStore.mascot || 'dice',
+      color: profileStore.color || '#FFD300',
+    })
+
+    const wsUrl = `${wsBase}?${query.toString()}`
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
@@ -36,7 +44,7 @@ export function useWebSocket(roomCode: string) {
         const msg = JSON.parse(event.data)
         handleServerMessage(msg.type, msg.payload)
       } catch (e) {
-        console.error('Erreur parsing message WS', e)
+        console.error('Erreur parsing WebSocket:', e)
       }
     }
 
@@ -46,11 +54,11 @@ export function useWebSocket(roomCode: string) {
 
     ws.onclose = (event) => {
       isConnected.value = false
-      // Reconnexion automatique avec le token pour la Grace Period de 45 secondes
+      // Reconnexion automatique pour la Grace Period de 45 secondes si non fermé volontairement
       if (!event.wasClean) {
         reconnectTimer = setTimeout(() => {
           connect()
-        }, 2500)
+        }, 2000)
       }
     }
 
@@ -60,34 +68,23 @@ export function useWebSocket(roomCode: string) {
   const handleServerMessage = (type: string, payload: any) => {
     switch (type) {
       case 'room:sync':
-        roomStore.setRoom(payload.room)
-        if (payload.chat) {
-          roomStore.setChat(payload.chat)
-        }
-        // Redirection automatique si le statut a changé vers in_game
-        if (payload.room.status === 'in_game' && router.currentRoute.value.path.includes('/lobby/')) {
-          router.push(`/game/${roomCode}`)
-        } else if (payload.room.status === 'in_lobby' && router.currentRoute.value.path.includes('/game/')) {
-          router.push(`/lobby/${roomCode}`)
-        }
+        roomStore.setRoom(payload)
         break
 
-      case 'chat:message':
+      case 'room:chat_history':
+        roomStore.setChatHistory(payload)
+        break
+
+      case 'room:chat_message':
         roomStore.addChatMessage(payload)
         break
 
       case 'game:round_start':
-        gameStore.startNewRound(payload)
-        if (!router.currentRoute.value.path.includes('/game/')) {
-          router.push(`/game/${roomCode}`)
-        }
+        gameStore.startRound(payload)
         break
 
       case 'game:guess_result':
-        gameStore.myAttempts = payload.attempts
-        gameStore.isSolved = payload.is_solved
-        gameStore.isFinished = payload.is_finished
-        gameStore.myScore = payload.round_score
+        gameStore.setGuessResult(payload)
         break
 
       case 'game:opponent_progress':
@@ -95,19 +92,15 @@ export function useWebSocket(roomCode: string) {
         break
 
       case 'game:round_end':
-        gameStore.setRoundEnd(payload)
+        gameStore.endRound(payload)
         break
 
-      case 'game:sync_state':
-        gameStore.wordLength = payload.word_length
-        gameStore.maxAttempts = payload.max_attempts
-        gameStore.endsAt = new Date(payload.ends_at)
-        gameStore.myAttempts = payload.my_attempts || []
-        gameStore.opponents = payload.opponents || []
+      case 'game:state_sync':
+        gameStore.syncGameState(payload)
         break
 
       case 'error':
-        errorMessage.value = payload.error
+        errorMessage.value = payload?.error || 'Une erreur est survenue'
         setTimeout(() => {
           errorMessage.value = null
         }, 4000)
@@ -121,16 +114,13 @@ export function useWebSocket(roomCode: string) {
     }
   }
 
-  const sendChat = (content: string) => {
-    send('chat:send', { content })
+  // Méthodes d'action rapides
+  const sendChatMessage = (content: string) => {
+    send('room:chat', { content })
   }
 
   const updateSettings = (settings: any) => {
     send('room:update_settings', settings)
-  }
-
-  const performAction = (actionType: 'kick' | 'ban' | 'mute' | 'unmute', targetUserId: string) => {
-    send('room:action', { action_type: actionType, target_user_id: targetUserId })
   }
 
   const startGame = () => {
@@ -138,19 +128,23 @@ export function useWebSocket(roomCode: string) {
   }
 
   const submitGuess = (guess: string) => {
-    send('game:submit_guess', { guess })
+    send('game:guess', { guess })
   }
 
-  const requestRematch = () => {
-    send('game:rematch', {})
+  const kickPlayer = (targetId: string) => {
+    send('room:kick', { target_id: targetId })
   }
 
-  const leaveRoom = () => {
-    send('room:leave', {})
-    if (socket.value) {
-      socket.value.close(1000, 'User left')
-    }
-    router.push('/')
+  const banPlayer = (targetId: string) => {
+    send('room:ban', { target_id: targetId })
+  }
+
+  const mutePlayer = (targetId: string, mute: boolean) => {
+    send('room:mute', { target_id: targetId, mute })
+  }
+
+  const rematch = () => {
+    send('room:rematch', {})
   }
 
   onMounted(() => {
@@ -160,20 +154,22 @@ export function useWebSocket(roomCode: string) {
   onUnmounted(() => {
     if (reconnectTimer) clearTimeout(reconnectTimer)
     if (socket.value) {
-      socket.value.close()
+      socket.value.close(1000, 'Navigation normale')
     }
   })
 
   return {
+    socket,
     isConnected,
     errorMessage,
     send,
-    sendChat,
+    sendChatMessage,
     updateSettings,
-    performAction,
     startGame,
     submitGuess,
-    requestRematch,
-    leaveRoom,
+    kickPlayer,
+    banPlayer,
+    mutePlayer,
+    rematch,
   }
 }

@@ -1,14 +1,17 @@
 import { defineStore } from 'pinia'
+import { useProfileStore } from '~/stores/profile'
 
 export type RoomStatus = 'in_lobby' | 'in_game' | 'closed'
 export type PlayerRole = 'master' | 'player' | 'spectator'
 
 export interface RoomPlayer {
-  user_id: string
-  username: string
-  display_username: string
-  avatar_url: string
+  id: string
+  nickname: string
+  mascot: string
+  color: string
   role: PlayerRole
+  is_master: boolean
+  is_spectator: boolean
   is_muted: boolean
   is_connected: boolean
   score: number
@@ -37,7 +40,8 @@ export interface ChatMessage {
   id: string
   sender_id: string
   sender: string
-  avatar_url: string
+  mascot: string
+  color: string
   content: string
   is_system: boolean
   created_at: string
@@ -47,39 +51,30 @@ export const useRoomStore = defineStore('room', {
   state: () => ({
     currentRoom: null as Room | null,
     chatMessages: [] as ChatMessage[],
-    myRole: 'player' as PlayerRole,
   }),
 
   getters: {
-    isMaster: (state) => {
-      const auth = useAuthStore()
-      return state.currentRoom?.master_id === auth.user?.id
-    },
     players: (state) => state.currentRoom?.players || [],
-    activePlayers: (state) => (state.currentRoom?.players || []).filter(p => p.role !== 'spectator'),
-    spectators: (state) => (state.currentRoom?.players || []).filter(p => p.role === 'spectator'),
-    settings: (state) => state.currentRoom?.settings || {
-      game_type: 'wordle',
-      word_length: 5,
-      round_duration: 60,
-      max_rounds: 3,
-      max_attempts: 6,
-      language: 'fr',
+    activePlayers: (state) => (state.currentRoom?.players || []).filter(p => !p.is_spectator),
+    spectators: (state) => (state.currentRoom?.players || []).filter(p => p.is_spectator),
+    
+    isMaster: (state) => {
+      const profile = useProfileStore()
+      const me = state.currentRoom?.players.find(p => p.nickname === profile.nickname)
+      return !!me?.is_master
     },
+
+    me: (state) => {
+      const profile = useProfileStore()
+      return state.currentRoom?.players.find(p => p.nickname === profile.nickname)
+    },
+
+    masterPlayer: (state) => state.currentRoom?.players.find(p => p.is_master),
   },
 
   actions: {
     setRoom(room: Room) {
       this.currentRoom = room
-      const auth = useAuthStore()
-      const me = room.players.find(p => p.user_id === auth.user?.id)
-      if (me) {
-        this.myRole = me.role
-      }
-    },
-
-    setChat(messages: ChatMessage[]) {
-      this.chatMessages = messages
     },
 
     addChatMessage(msg: ChatMessage) {
@@ -87,6 +82,10 @@ export const useRoomStore = defineStore('room', {
       if (this.chatMessages.length > 50) {
         this.chatMessages.shift()
       }
+    },
+
+    setChatHistory(messages: ChatMessage[]) {
+      this.chatMessages = messages
     },
 
     clearRoom() {

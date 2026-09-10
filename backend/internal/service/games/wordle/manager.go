@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,39 +12,39 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"minigames-backend/internal/domain"
-	"minigames-backend/internal/repository/postgres"
 	redisRepo "minigames-backend/internal/repository/redis"
 	"minigames-backend/internal/transport/ws"
 )
 
 type PlayerRoundState struct {
-	UserID       uuid.UUID                 `json:"user_id"`
-	Attempts     [][]TileEvaluation        `json:"attempts"`      // Visible seulement par le joueur
-	MaskedRows   [][]MaskedTileEvaluation  `json:"masked_rows"`   // Diffusable aux adversaires
-	IsSolved     bool                      `json:"is_solved"`
-	IsFinished   bool                      `json:"is_finished"`
-	SolveTimeSec int                       `json:"solve_time_sec"`
-	RoundScore   int                       `json:"round_score"`
+	UserID       uuid.UUID                `json:"user_id"`
+	Nickname     string                   `json:"nickname"`
+	Mascot       string                   `json:"mascot"`
+	Color        string                   `json:"color"`
+	Attempts     [][]TileEvaluation       `json:"attempts"`    // Visible seulement par le joueur
+	MaskedRows   [][]MaskedTileEvaluation `json:"masked_rows"` // Diffusable aux adversaires (sans lettres)
+	IsSolved     bool                     `json:"is_solved"`
+	IsFinished   bool                     `json:"is_finished"`
+	SolveTimeSec int                      `json:"solve_time_sec"`
+	RoundScore   int                      `json:"round_score"`
 }
 
 type RoundState struct {
-	TargetWord  string                       `json:"target_word"` // SECRET ABSOLU SERVEUR
-	WordLength  int                          `json:"word_length"`
-	MaxAttempts int                          `json:"max_attempts"`
-	StartedAt   time.Time                    `json:"started_at"`
-	EndsAt      time.Time                    `json:"ends_at"`
+	TargetWord  string                          `json:"target_word"` // SECRET ABSOLU SERVEUR
+	WordLength  int                             `json:"word_length"`
+	MaxAttempts int                             `json:"max_attempts"`
+	StartedAt   time.Time                       `json:"started_at"`
+	EndsAt      time.Time                       `json:"ends_at"`
 	Players     map[uuid.UUID]*PlayerRoundState `json:"players"`
-	IsCompleted bool                         `json:"is_completed"`
+	IsCompleted bool                            `json:"is_completed"`
 }
 
 type WordleGameManager struct {
-	mu          sync.RWMutex
-	dict        *Dictionary
-	hub         *ws.Hub
-	roomRepo    *redisRepo.RoomRepository
-	sessionRepo *postgres.RoomSessionRepository
-	userRepo    *postgres.UserRepository
-	redisClient *redis.Client
+	mu           sync.RWMutex
+	dict         *Dictionary
+	hub          *ws.Hub
+	roomRepo     *redisRepo.RoomRepository
+	redisClient  *redis.Client
 	activeRounds map[string]*RoundState // roomCode -> RoundState
 }
 
@@ -51,16 +52,12 @@ func NewWordleGameManager(
 	dict *Dictionary,
 	hub *ws.Hub,
 	roomRepo *redisRepo.RoomRepository,
-	sessionRepo *postgres.RoomSessionRepository,
-	userRepo *postgres.UserRepository,
 	redisClient *redis.Client,
 ) *WordleGameManager {
 	mgr := &WordleGameManager{
 		dict:         dict,
 		hub:          hub,
 		roomRepo:     roomRepo,
-		sessionRepo:  sessionRepo,
-		userRepo:     userRepo,
 		redisClient:  redisClient,
 		activeRounds: make(map[string]*RoundState),
 	}
@@ -74,23 +71,11 @@ func (m *WordleGameManager) HandleGameAction(client *ws.Client, action string, p
 	switch action {
 	case "game:start":
 		m.handleStartGame(ctx, client)
-	case "game:submit_guess":
-		m.handleSubmitGuess(ctx, client, payload)
-	case "game:rematch":
-		m.handleRematch(ctx, client)
+	case "game:guess":
+		m.handleGuess(ctx, client, payload)
+	case "game:get_state":
+		m.handleGetState(client)
 	}
-}
-
-func (m *WordleGameManager) OnPlayerJoined(client *ws.Client, room *domain.Room) {
-	// Si la room est in_game, synchroniser l'état masqué actuel avec le nouveau spectateur/joueur
-	if room.Status == domain.RoomStatusInGame {
-		m.syncGameStateForUser(client)
-	}
-}
-
-func (m *WordleGameManager) OnPlayerLeft(roomCode string, userID uuid.UUID) {
-	// Vérifier si tous les joueurs actifs ont fini la manche
-	m.checkRoundCompletion(context.Background(), roomCode)
 }
 
 func (m *WordleGameManager) handleStartGame(ctx context.Context, client *ws.Client) {
@@ -100,7 +85,6 @@ func (m *WordleGameManager) handleStartGame(ctx context.Context, client *ws.Clie
 		return
 	}
 
-	// Seul le Master a toute autorité pour lancer la partie
 	if room.MasterID != client.UserID() {
 		client.SendError("Seul le Master peut lancer la partie")
 		return
@@ -117,15 +101,12 @@ func (m *WordleGameManager) handleStartGame(ctx context.Context, client *ws.Clie
 
 func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, roundNum int) {
 	wordLen := room.Settings.WordLength
-	if wordLen == 0 {
+	if wordLen < 3 || wordLen > 8 {
 		wordLen = 5
 	}
-	lang := room.Settings.Language
-	if lang == "" {
-		lang = "fr"
-	}
 
-	targetWord := m.dict.GetRandomWord(lang, wordLen)
+	// Tirage aléatoire d'un mot secret cible de la longueur exacte
+	targetWord := m.dict.PickRandomByLength(wordLen)
 	duration := time.Duration(room.Settings.RoundDuration) * time.Second
 	if duration == 0 {
 		duration = 60 * time.Second
@@ -147,12 +128,18 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 	}
 
 	for _, p := range players {
-		// Seuls les rôles joueurs ou master participent activement
 		if p.Role != domain.RoleSpectator {
-			roundState.Players[p.UserID] = &PlayerRoundState{
-				UserID:     p.UserID,
-				Attempts:   make([][]TileEvaluation, 0),
-				MaskedRows: make([][]MaskedTileEvaluation, 0),
+			roundState.Players[p.ID] = &PlayerRoundState{
+				UserID:       p.ID,
+				Nickname:     p.Nickname,
+				Mascot:       p.Mascot,
+				Color:        p.Color,
+				Attempts:     make([][]TileEvaluation, 0),
+				MaskedRows:   make([][]MaskedTileEvaluation, 0),
+				IsSolved:     false,
+				IsFinished:   false,
+				SolveTimeSec: 0,
+				RoundScore:   0,
 			}
 		}
 	}
@@ -162,10 +149,10 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 	m.mu.Unlock()
 
 	_ = m.roomRepo.UpdateRoomStatus(ctx, room.Code, domain.RoomStatusInGame)
+	_ = m.roomRepo.SetSecretWord(ctx, room.Code, targetWord)
 	_ = m.roomRepo.UpdateRound(ctx, room.Code, roundNum, &endsAt)
-	_ = m.sessionRepo.UpdateStatus(ctx, room.Code, domain.RoomStatusInGame)
 
-	// Broadcaster le début de manche avec timestamp absolu ends_at
+	// Broadcaster le début de manche avec horodatage absolu ends_at
 	startPayload, _ := json.Marshal(map[string]interface{}{
 		"round":          roundNum,
 		"max_rounds":     room.Settings.MaxRounds,
@@ -180,31 +167,37 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 		Payload: startPayload,
 	})
 
-	m.hub.BroadcastSystemMessage(room.Code, fmt.Sprintf("🎮 Manche %d/%d lancée ! Trouvez le mot de %d lettres en %d secondes !", roundNum, room.Settings.MaxRounds, wordLen, int(duration.Seconds())))
-
 	m.hub.SyncRoom(room.Code)
+	m.hub.BroadcastSystemMessage(room.Code, fmt.Sprintf("🎮 Manche %d lancée ! Mot secret de %d lettres.", roundNum, wordLen))
 
-	// Lancer un timer pour expiration automatique de la manche
-	go func(code string, round int, targetEndsAt time.Time) {
+	// Timer de fin de manche automatique
+	go func(roomCode string, rNum int, targetEndsAt time.Time) {
 		time.Sleep(time.Until(targetEndsAt))
-		m.handleRoundTimeout(context.Background(), code, round)
+		m.mu.Lock()
+		activeRound, exists := m.activeRounds[roomCode]
+		m.mu.Unlock()
+
+		if exists && !activeRound.IsCompleted {
+			m.endRound(context.Background(), roomCode, "Temps écoulé !")
+		}
 	}(room.Code, roundNum, endsAt)
 }
 
-func (m *WordleGameManager) handleSubmitGuess(ctx context.Context, client *ws.Client, payload json.RawMessage) {
+func (m *WordleGameManager) handleGuess(ctx context.Context, client *ws.Client, payload json.RawMessage) {
 	var body struct {
 		Guess string `json:"guess"`
 	}
 	if err := json.Unmarshal(payload, &body); err != nil {
+		client.SendError("Format de proposition invalide")
 		return
 	}
 
-	m.mu.Lock()
+	m.mu.RLock()
 	round, ok := m.activeRounds[client.RoomCode()]
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
 	if !ok || round.IsCompleted {
-		client.SendError("Aucune manche en cours")
+		client.SendError("Aucune manche active dans cette salle")
 		return
 	}
 
@@ -227,25 +220,19 @@ func (m *WordleGameManager) handleSubmitGuess(ctx context.Context, client *ws.Cl
 		return
 	}
 
-	guess := body.Guess
+	guess := strings.ToUpper(strings.TrimSpace(body.Guess))
 	if len(guess) != round.WordLength {
 		client.SendError(fmt.Sprintf("Le mot doit contenir exactement %d lettres", round.WordLength))
 		return
 	}
 
-	// Validation du mot dans le dictionnaire
-	room, _ := m.roomRepo.GetRoom(ctx, client.RoomCode())
-	lang := "fr"
-	if room != nil && room.Settings.Language != "" {
-		lang = room.Settings.Language
-	}
-
-	if !m.dict.IsValidWord(lang, guess) {
+	// Validation du mot dans le dictionnaire étendu en O(1)
+	if !m.dict.IsValid(guess) {
 		client.SendError("Ce mot n'existe pas dans le dictionnaire")
 		return
 	}
 
-	// Évaluation
+	// Évaluation de la proposition
 	eval, isSolved := EvaluateGuess(round.TargetWord, guess)
 	masked := MaskEvaluation(eval)
 
@@ -258,21 +245,23 @@ func (m *WordleGameManager) handleSubmitGuess(ctx context.Context, client *ws.Cl
 		playerState.IsFinished = true
 		playerState.SolveTimeSec = int(time.Since(round.StartedAt).Seconds())
 
-		// Calcul de score: base 1000 pts - pénalité par tentative - pénalité de temps
-		attemptsPenalty := (len(playerState.Attempts) - 1) * 120
-		timePenalty := playerState.SolveTimeSec * 5
-		score := 1000 - attemptsPenalty - timePenalty
-		if score < 200 {
-			score = 200
+		// Calcul des points de la manche (essais restants + bonus temps)
+		attemptsUsed := len(playerState.Attempts)
+		remainingAttempts := round.MaxAttempts - attemptsUsed + 1
+		timeBonus := int(round.EndsAt.Sub(time.Now()).Seconds()) / 5
+		if timeBonus < 0 {
+			timeBonus = 0
 		}
-		playerState.RoundScore = score
+		playerState.RoundScore = (remainingAttempts * 100) + timeBonus
+
 	} else if len(playerState.Attempts) >= round.MaxAttempts {
 		playerState.IsFinished = true
+		playerState.IsSolved = false
 		playerState.RoundScore = 0
 	}
 	m.mu.Unlock()
 
-	// 1. Envoyer le résultat complet (avec les lettres) EXCLUSIVEMENT au joueur concerné
+	// 1. Envoyer le résultat complet (avec lettres) au joueur qui a deviné
 	playerData, _ := json.Marshal(map[string]interface{}{
 		"attempts":    playerState.Attempts,
 		"is_solved":   playerState.IsSolved,
@@ -284,79 +273,47 @@ func (m *WordleGameManager) handleSubmitGuess(ctx context.Context, client *ws.Cl
 		Payload: playerData,
 	})
 
-	// 2. Diffuser aux AUTRES joueurs de la room l'aperçu MASQUÉ (state-masking strict, sans spoilers !)
+	// 2. Diffuser aux adversaires le State Masking (SANS LES LETTRES)
 	opponentData, _ := json.Marshal(map[string]interface{}{
-		"user_id":     client.UserID(),
-		"row_index":   len(playerState.Attempts) - 1,
-		"masked_row":  masked,
-		"is_solved":   playerState.IsSolved,
-		"is_finished": playerState.IsFinished,
+		"user_id":      playerState.UserID,
+		"nickname":     playerState.Nickname,
+		"mascot":       playerState.Mascot,
+		"color":        playerState.Color,
+		"masked_rows":  playerState.MaskedRows,
+		"is_solved":    playerState.IsSolved,
+		"is_finished":  playerState.IsFinished,
+		"attempts_cnt": len(playerState.MaskedRows),
 	})
 	m.hub.BroadcastToRoom(client.RoomCode(), domain.WSMessage{
 		Type:    "game:opponent_progress",
 		Payload: opponentData,
 	})
 
-	if playerState.IsSolved {
-		p, _ := m.roomRepo.GetPlayer(ctx, client.RoomCode(), client.UserID())
-		name := "Un joueur"
-		if p != nil {
-			name = p.DisplayUsername
-		}
-		m.hub.BroadcastSystemMessage(client.RoomCode(), fmt.Sprintf("🎯 %s a trouvé le mot en %d essais (%ds) !", name, len(playerState.Attempts), playerState.SolveTimeSec))
+	// Si résolu, féliciter dans le chat
+	if isSolved {
+		m.hub.BroadcastSystemMessage(client.RoomCode(), fmt.Sprintf("✨ %s a trouvé le mot en %d essai(s) !", playerState.Nickname, len(playerState.Attempts)))
 	}
 
-	// Vérifier si tout le monde a terminé
-	m.checkRoundCompletion(ctx, client.RoomCode())
-}
-
-func (m *WordleGameManager) handleRoundTimeout(ctx context.Context, roomCode string, roundNum int) {
-	m.mu.Lock()
-	round, ok := m.activeRounds[roomCode]
-	m.mu.Unlock()
-
-	if !ok || round.IsCompleted {
-		return
-	}
-
-	// Clôturer pour tous les joueurs qui n'ont pas encore fini
-	m.mu.Lock()
-	for _, p := range round.Players {
-		if !p.IsFinished {
-			p.IsFinished = true
-			p.RoundScore = 0
-		}
-	}
-	m.mu.Unlock()
-
-	m.endRound(ctx, roomCode, round)
-}
-
-func (m *WordleGameManager) checkRoundCompletion(ctx context.Context, roomCode string) {
-	m.mu.Lock()
-	round, ok := m.activeRounds[roomCode]
-	if !ok || round.IsCompleted {
-		m.mu.Unlock()
-		return
-	}
-
+	// Vérifier si tous les joueurs actifs ont terminé
 	allFinished := true
+	m.mu.RLock()
 	for _, p := range round.Players {
 		if !p.IsFinished {
 			allFinished = false
 			break
 		}
 	}
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
-	if allFinished && len(round.Players) > 0 {
-		m.endRound(ctx, roomCode, round)
+	if allFinished {
+		m.endRound(ctx, client.RoomCode(), "Tous les joueurs ont terminé !")
 	}
 }
 
-func (m *WordleGameManager) endRound(ctx context.Context, roomCode string, round *RoundState) {
+func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason string) {
 	m.mu.Lock()
-	if round.IsCompleted {
+	round, ok := m.activeRounds[roomCode]
+	if !ok || round.IsCompleted {
 		m.mu.Unlock()
 		return
 	}
@@ -368,61 +325,45 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode string, round
 		return
 	}
 
-	sessionID, _ := m.sessionRepo.GetSessionIDByCode(ctx, roomCode)
+	// Mise à jour des scores dans Redis
+	roundScoresMap := make(map[string]int)
+	var winnerID *uuid.UUID
+	var winnerName string
+	highestRoundScore := -1
 
-	// Appliquer les scores et générer les grilles emojis
-	type PlayerSummary struct {
-		UserID          uuid.UUID `json:"user_id"`
-		DisplayUsername string    `json:"display_username"`
-		AvatarURL       string    `json:"avatar_url"`
-		IsSolved        bool      `json:"is_solved"`
-		AttemptsCount   int       `json:"attempts_count"`
-		ScoreDelta      int       `json:"score_delta"`
-		TotalScore      int       `json:"total_score"`
-		EmojiGrid       string    `json:"emoji_grid"`
-	}
-
-	summaries := make([]PlayerSummary, 0)
-
-	for userID, pState := range round.Players {
-		// Mettre à jour le score du joueur dans Redis
-		_ = m.roomRepo.UpdatePlayerScore(ctx, roomCode, userID, pState.RoundScore)
-		player, _ := m.roomRepo.GetPlayer(ctx, roomCode, userID)
-
-		totalScore := pState.RoundScore
-		name := "Joueur"
-		avatar := ""
-		if player != nil {
-			totalScore = player.Score
-			name = player.DisplayUsername
-			avatar = player.AvatarURL
+	for uid, p := range round.Players {
+		roundScoresMap[uid.String()] = p.RoundScore
+		if p.RoundScore > 0 {
+			_, _ = m.roomRepo.AddScore(ctx, roomCode, uid, p.RoundScore)
 		}
-
-		// Persister dans Postgres
-		_ = m.sessionRepo.RecordRoundScore(ctx, sessionID, userID, "wordle", room.CurrentRound, pState.RoundScore, totalScore)
-		_ = m.userRepo.RecordGameResult(ctx, userID, "wordle", pState.IsSolved, totalScore)
-
-		emojiGrid := GenerateEmojiGrid(pState.Attempts)
-
-		summaries = append(summaries, PlayerSummary{
-			UserID:          userID,
-			DisplayUsername: name,
-			AvatarURL:       avatar,
-			IsSolved:        pState.IsSolved,
-			AttemptsCount:   len(pState.Attempts),
-			ScoreDelta:      pState.RoundScore,
-			TotalScore:      totalScore,
-			EmojiGrid:       emojiGrid,
-		})
+		if p.IsSolved && p.RoundScore > highestRoundScore {
+			highestRoundScore = p.RoundScore
+			wID := uid
+			winnerID = &wID
+			winnerName = p.Nickname
+		}
 	}
 
-	// Révélation du mot secret à la fin de manche
+	// Enregistrer dans l'historique
+	_ = m.roomRepo.AddRoundHistory(ctx, roomCode, &domain.RoundHistory{
+		RoundNum:   room.CurrentRound,
+		SecretWord: round.TargetWord,
+		WinnerID:   winnerID,
+		WinnerName: winnerName,
+		Scores:     roundScoresMap,
+		EndedAt:    time.Now(),
+	})
+
+	allScores, _ := m.roomRepo.GetScores(ctx, roomCode)
+
+	// Broadcaster la fin de manche avec RÉVÉLATION DU MOT
 	endPayload, _ := json.Marshal(map[string]interface{}{
-		"target_word":  round.TargetWord,
 		"round":        room.CurrentRound,
-		"max_rounds":   room.Settings.MaxRounds,
-		"summaries":    summaries,
-		"is_game_over": room.CurrentRound >= room.Settings.MaxRounds,
+		"secret_word":  round.TargetWord,
+		"reason":       reason,
+		"winner_name":  winnerName,
+		"round_scores": roundScoresMap,
+		"total_scores": allScores,
 	})
 
 	m.hub.BroadcastToRoom(roomCode, domain.WSMessage{
@@ -430,107 +371,99 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode string, round
 		Payload: endPayload,
 	})
 
-	m.hub.BroadcastSystemMessage(roomCode, fmt.Sprintf("🏁 Fin de la manche %d ! Le mot secret était : %s", room.CurrentRound, round.TargetWord))
+	m.hub.BroadcastSystemMessage(roomCode, fmt.Sprintf("🏁 Fin de manche ! Le mot était : %s", round.TargetWord))
 
-	// Passage à la manche suivante ou Game Over
+	// Vérifier s'il reste des manches à jouer
 	if room.CurrentRound < room.Settings.MaxRounds {
-		go func() {
-			time.Sleep(7 * time.Second) // Pause récapitulative
-			updatedRoom, _ := m.roomRepo.GetRoom(context.Background(), roomCode)
-			if updatedRoom != nil && updatedRoom.Status == domain.RoomStatusInGame {
-				m.startRound(context.Background(), updatedRoom, room.CurrentRound+1)
+		// Compte à rebours de 7s avant la manche suivante
+		go func(rCode string, nextRoundNum int) {
+			time.Sleep(7 * time.Second)
+			m.mu.RLock()
+			r, err := m.roomRepo.GetRoom(context.Background(), rCode)
+			m.mu.RUnlock()
+			if err == nil && r.Status == domain.RoomStatusInGame {
+				m.startRound(context.Background(), r, nextRoundNum)
 			}
-		}()
+		}(roomCode, room.CurrentRound+1)
 	} else {
-		// Fin définitive de partie
-		m.hub.BroadcastSystemMessage(roomCode, "🏆 Partie terminée ! Consultez le Scoreboard final !")
+		// Partie terminée !
+		_ = m.roomRepo.UpdateRoomStatus(ctx, roomCode, domain.RoomStatusInLobby)
+		m.hub.BroadcastSystemMessage(roomCode, "🏆 Partie terminée ! Retrouvez le classement général.")
 		m.hub.SyncRoom(roomCode)
 	}
 }
 
-func (m *WordleGameManager) handleRematch(ctx context.Context, client *ws.Client) {
-	room, err := m.roomRepo.GetRoom(ctx, client.RoomCode())
-	if err != nil {
-		return
-	}
-	if room.MasterID != client.UserID() {
-		client.SendError("Seul le Master peut relancer une revanche")
-		return
-	}
-
-	// Réinitialiser la room en Lobby tout en conservant l'historique et les scores cumulés
-	_ = m.roomRepo.UpdateRoomStatus(ctx, client.RoomCode(), domain.RoomStatusInLobby)
-	_ = m.roomRepo.UpdateRound(ctx, client.RoomCode(), 1, nil)
-
-	m.mu.Lock()
-	delete(m.activeRounds, client.RoomCode())
-	m.mu.Unlock()
-
-	// Réintégrer tous les spectateurs au statut de joueur actif pour la prochaine partie
-	players, _ := m.roomRepo.GetPlayers(ctx, client.RoomCode())
-	for _, p := range players {
-		if p.Role == domain.RoleSpectator {
-			p.Role = domain.RolePlayer
-			_ = m.roomRepo.AddPlayer(ctx, client.RoomCode(), &p)
-		}
-	}
-
-	m.hub.BroadcastSystemMessage(client.RoomCode(), "🔄 Le Master a lancé une revanche ! Vous êtes de retour dans le lobby.")
-	m.hub.SyncRoom(client.RoomCode())
-}
-
-func (m *WordleGameManager) syncGameStateForUser(client *ws.Client) {
+func (m *WordleGameManager) handleGetState(client *ws.Client) {
 	m.mu.RLock()
 	round, ok := m.activeRounds[client.RoomCode()]
 	m.mu.RUnlock()
 
-	if !ok || round.IsCompleted {
+	if !ok {
 		return
 	}
 
-	// Préparer la vue masquée pour chaque joueur
-	type OpponentView struct {
-		UserID          uuid.UUID                 `json:"user_id"`
-		DisplayUsername string                    `json:"display_username"`
-		MaskedRows      [][]MaskedTileEvaluation  `json:"masked_rows"`
-		IsSolved        bool                      `json:"is_solved"`
-		IsFinished      bool                      `json:"is_finished"`
-	}
-
-	opponents := make([]OpponentView, 0)
-	var myAttempts [][]TileEvaluation
-
 	m.mu.RLock()
-	for uid, pState := range round.Players {
-		if uid == client.UserID() {
-			myAttempts = pState.Attempts
-		} else {
-			p, _ := m.roomRepo.GetPlayer(context.Background(), client.RoomCode(), uid)
-			name := "Joueur"
-			if p != nil {
-				name = p.DisplayUsername
-			}
-			opponents = append(opponents, OpponentView{
-				UserID:          uid,
-				DisplayUsername: name,
-				MaskedRows:      pState.MaskedRows,
-				IsSolved:        pState.IsSolved,
-				IsFinished:      pState.IsFinished,
+	playerState := round.Players[client.UserID()]
+	opponents := make([]map[string]interface{}, 0)
+	for uid, p := range round.Players {
+		if uid != client.UserID() {
+			opponents = append(opponents, map[string]interface{}{
+				"user_id":      p.UserID,
+				"nickname":     p.Nickname,
+				"mascot":       p.Mascot,
+				"color":        p.Color,
+				"masked_rows":  p.MaskedRows,
+				"is_solved":    p.IsSolved,
+				"is_finished":  p.IsFinished,
+				"attempts_cnt": len(p.MaskedRows),
 			})
 		}
 	}
 	m.mu.RUnlock()
 
-	syncPayload, _ := json.Marshal(map[string]interface{}{
+	var attempts [][]TileEvaluation
+	isSolved := false
+	isFinished := false
+	if playerState != nil {
+		attempts = playerState.Attempts
+		isSolved = playerState.IsSolved
+		isFinished = playerState.IsFinished
+	}
+
+	statePayload, _ := json.Marshal(map[string]interface{}{
 		"word_length":  round.WordLength,
 		"max_attempts": round.MaxAttempts,
 		"ends_at":      round.EndsAt.Format(time.RFC3339),
-		"my_attempts":  myAttempts,
+		"attempts":     attempts,
+		"is_solved":    isSolved,
+		"is_finished":  isFinished,
 		"opponents":    opponents,
 	})
 
 	client.Send(domain.WSMessage{
-		Type:    "game:sync_state",
-		Payload: syncPayload,
+		Type:    "game:state_sync",
+		Payload: statePayload,
 	})
+}
+
+func (m *WordleGameManager) OnPlayerJoined(client *ws.Client, room *domain.Room) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	round, ok := m.activeRounds[room.Code]
+	if !ok || round.IsCompleted {
+		return
+	}
+
+	// Si le joueur n'était pas dans la manche active, le marquer comme spectateur
+	if _, exists := round.Players[client.UserID()]; !exists {
+		_ = m.roomRepo.SetPlayerSpectator(context.Background(), room.Code, client.UserID(), true)
+	}
+
+	// Lui envoyer l'état actuel de la manche
+	go m.handleGetState(client)
+}
+
+func (m *WordleGameManager) OnPlayerLeft(roomCode string, userID uuid.UUID) {
+	// Période de grâce de 45s gérée par Redis et les workers
 }

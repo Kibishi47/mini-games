@@ -1,0 +1,74 @@
+import { defineStore } from 'pinia'
+import type { MascotName } from '~/components/ui/GameMascot.vue'
+
+export const MASCOTS: { id: MascotName; name: string; color: string; desc: string }[] = [
+  { id: 'dice', name: 'Le Dé Sprinteur', color: '#FFD300', desc: 'Toujours en mouvement' },
+  { id: 'domino', name: 'Le Domino Rusé', color: '#158A44', desc: 'Calculateur impassible' },
+  { id: 'card', name: 'L\'As de Cœur', color: '#E63228', desc: 'Chaud bouillant' },
+  { id: 'knight', name: 'Le Cavalier', color: '#121212', desc: 'Fonce tête baissée' },
+  { id: 'd20', name: 'Le D20 Cosmique', color: '#F27A9B', desc: 'Maître du hasard critique' },
+  { id: 'meeple', name: 'Le Meeple Arbitre', color: '#1D4ED8', desc: 'L\'esprit du jeu' },
+]
+
+export const useProfileStore = defineStore('profile', {
+  state: () => ({
+    nickname: 'Joueur' as string,
+    mascot: 'dice' as MascotName,
+    color: '#FFD300' as string,
+    sessionToken: '' as string,
+    currentRoomCode: '' as string,
+  }),
+
+  actions: {
+    initProfile() {
+      if (process.client) {
+        const savedNick = localStorage.getItem('mg_nickname')
+        const savedMascot = localStorage.getItem('mg_mascot') as MascotName | null
+        const savedColor = localStorage.getItem('mg_color')
+        const savedToken = localStorage.getItem('mg_session_token')
+        const savedRoom = localStorage.getItem('mg_room_code')
+
+        if (savedNick) this.nickname = savedNick
+        if (savedMascot && MASCOTS.some(m => m.id === savedMascot)) this.mascot = savedMascot
+        if (savedColor) this.color = savedColor
+        if (savedToken) this.sessionToken = savedToken
+        if (savedRoom) this.currentRoomCode = savedRoom
+      }
+    },
+
+    setProfile(nickname: string, mascot: MascotName, color?: string) {
+      this.nickname = nickname.trim() || 'Joueur'
+      this.mascot = mascot
+      if (color) {
+        this.color = color
+      } else {
+        const found = MASCOTS.find(m => m.id === mascot)
+        if (found) this.color = found.color
+      }
+
+      if (process.client) {
+        localStorage.setItem('mg_nickname', this.nickname)
+        localStorage.setItem('mg_mascot', this.mascot)
+        localStorage.setItem('mg_color', this.color)
+      }
+    },
+
+    setSession(token: string, roomCode: string) {
+      this.sessionToken = token
+      this.currentRoomCode = roomCode
+      if (process.client) {
+        localStorage.setItem('mg_session_token', token)
+        localStorage.setItem('mg_room_code', roomCode)
+      }
+    },
+
+    clearSession() {
+      this.sessionToken = ''
+      this.currentRoomCode = ''
+      if (process.client) {
+        localStorage.removeItem('mg_session_token')
+        localStorage.removeItem('mg_room_code')
+      }
+    },
+  },
+})

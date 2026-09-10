@@ -11,15 +11,15 @@
     <!-- Mini Panneaux Latéraux des Concurrents -->
     <div class="grid grid-cols-1 gap-2.5 overflow-y-auto max-h-[380px] pr-1">
       <div
-        v-for="(opp, idx) in opponents"
+        v-for="opp in opponents"
         :key="opp.user_id"
         class="border-2 border-ink-black rounded-xl p-2.5 bg-board-cream flex flex-col space-y-1.5 shadow-pop-xs"
       >
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
-            <GameMascot :name="getMascotName(idx)" mood="idle" size="sm" />
+            <GameMascot :name="(opp.mascot as any) || 'dice'" mood="idle" size="sm" />
             <span class="font-display font-black text-xs uppercase text-ink-black truncate max-w-[120px]">
-              {{ opp.display_username }}
+              {{ opp.nickname }}
             </span>
           </div>
           
@@ -32,7 +32,7 @@
           </div>
         </div>
 
-        <!-- Mini Tuiles Masquées (State Masking Strict) -->
+        <!-- Mini Tuiles Masquées (State Masking Strict : zéro lettre, seulement les couleurs) -->
         <div class="flex flex-col gap-1 items-center bg-board-white p-2 rounded-lg border border-ink-black">
           <div
             v-for="(row, rIdx) in (opp.masked_rows || [])"
@@ -61,16 +61,13 @@
 
 <script setup lang="ts">
 import { Users } from 'lucide-vue-next'
-import type { OpponentProgress } from '~/stores/game'
-import GameMascot, { type MascotName } from '~/components/ui/GameMascot.vue'
 import AppCard from '~/components/ui/AppCard.vue'
 import AppBadge from '~/components/ui/AppBadge.vue'
+import GameMascot from '~/components/ui/GameMascot.vue'
+import type { OpponentProgress } from '~/stores/game'
 
 defineProps<{
   opponents: OpponentProgress[]
   maxAttempts: number
 }>()
-
-const mascotPool: MascotName[] = ['knight', 'domino', 'card', 'd20', 'meeple', 'dice']
-const getMascotName = (idx: number): MascotName => mascotPool[idx % mascotPool.length]
 </script>

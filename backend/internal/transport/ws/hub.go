@@ -4,22 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"minigames-backend/internal/domain"
-	"minigames-backend/internal/repository/postgres"
 	"minigames-backend/internal/repository/redis"
 )
 
 type Hub struct {
-	roomsMu      sync.RWMutex
-	roomClients  map[string]map[uuid.UUID]*Client // roomCode -> (userID -> *Client)
-	roomRepo     *redis.RoomRepository
-	sessionRepo  *postgres.RoomSessionRepository
-	gameHandler  GameEventHandler
+	roomsMu     sync.RWMutex
+	roomClients map[string]map[uuid.UUID]*Client // roomCode -> (userID -> *Client)
+	roomRepo    *redis.RoomRepository
+	gameHandler GameEventHandler
+
+	// Rate limiting en mémoire par client pour anti-spam
+	msgRateMu   sync.Mutex
+	msgRates    map[uuid.UUID][]time.Time
 }
 
 type GameEventHandler interface {
@@ -28,11 +31,11 @@ type GameEventHandler interface {
 	OnPlayerLeft(roomCode string, userID uuid.UUID)
 }
 
-func NewHub(roomRepo *redis.RoomRepository, sessionRepo *postgres.RoomSessionRepository) *Hub {
+func NewHub(roomRepo *redis.RoomRepository) *Hub {
 	return &Hub{
 		roomClients: make(map[string]map[uuid.UUID]*Client),
 		roomRepo:    roomRepo,
-		sessionRepo: sessionRepo,
+		msgRates:    make(map[uuid.UUID][]time.Time),
 	}
 }
 
@@ -50,18 +53,32 @@ func (h *Hub) Register(client *Client) {
 
 	ctx := context.Background()
 	_ = h.roomRepo.UpdatePlayerActivity(ctx, client.roomCode, client.userID, true)
+	if client.sessionToken != "" {
+		_ = h.roomRepo.RefreshSession(ctx, client.sessionToken)
+	}
 
-	// Synchroniser la room avec le nouvel arrivant
+	// Synchroniser la room avec le nouvel arrivant et les autres
 	h.SyncRoom(client.roomCode)
 
-	// Notification de présence
+	// Notification système de connexion
 	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
 	if err == nil {
 		p, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
+		nickname := "Un joueur"
 		if p != nil {
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a rejoint la salle", p.DisplayUsername))
+			nickname = p.Nickname
 		}
+		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("👋 %s a rejoint la salle", nickname))
 
+		// Envoi de l'historique du chat au nouveau client
+		chatHistory, _ := h.roomRepo.GetRecentChatMessages(ctx, client.roomCode)
+		chatBytes, _ := json.Marshal(chatHistory)
+		client.Send(domain.WSMessage{
+			Type:    "room:chat_history",
+			Payload: chatBytes,
+		})
+
+		// Notification au moteur de jeu
 		if h.gameHandler != nil {
 			h.gameHandler.OnPlayerJoined(client, room)
 		}
@@ -79,48 +96,329 @@ func (h *Hub) Unregister(client *Client) {
 	h.roomsMu.Unlock()
 
 	ctx := context.Background()
-	// Marquer comme déconnecté mais conserver le slot (Grace Period de 45 secondes)
 	_ = h.roomRepo.UpdatePlayerActivity(ctx, client.roomCode, client.userID, false)
 
-	// Notifier les autres joueurs
-	p, err := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
-	if err == nil && p != nil {
-		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s s'est déconnecté (en attente...)", p.DisplayUsername))
+	// Notification de départ
+	p, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
+	if p != nil {
+		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("🚶 %s a quitté la salle", p.Nickname))
 	}
 
-	h.SyncRoom(client.roomCode)
+	// Vérification de passation Master si le master part
+	h.HandleMasterSuccession(client.roomCode, client.userID)
+
+	// Si plus personne du tout, fermer la room
+	remainingClients := h.GetRoomClients(client.roomCode)
+	if len(remainingClients) == 0 {
+		// Pas de fermeture immédiate pour laisser la période de grâce de 45s jouer (gérée par le GC)
+	} else {
+		h.SyncRoom(client.roomCode)
+	}
 
 	if h.gameHandler != nil {
 		h.gameHandler.OnPlayerLeft(client.roomCode, client.userID)
 	}
 }
 
-func (h *Hub) BroadcastToRoom(roomCode string, msg domain.WSMessage) {
-	h.roomsMu.RLock()
-	clients, ok := h.roomClients[roomCode]
-	if !ok {
-		h.roomsMu.RUnlock()
-		return
-	}
-	// Copier la liste pour ne pas bloquer le mutex pendant l'envoi
-	recipients := make([]*Client, 0, len(clients))
-	for _, c := range clients {
-		recipients = append(recipients, c)
-	}
-	h.roomsMu.RUnlock()
-
-	for _, c := range recipients {
-		c.Send(msg)
+func (h *Hub) TouchPlayer(client *Client) {
+	ctx := context.Background()
+	_ = h.roomRepo.UpdatePlayerActivity(ctx, client.roomCode, client.userID, true)
+	if client.sessionToken != "" {
+		_ = h.roomRepo.RefreshSession(ctx, client.sessionToken)
 	}
 }
 
-func (h *Hub) SendToUser(roomCode string, userID uuid.UUID, msg domain.WSMessage) {
-	h.roomsMu.RLock()
-	client, ok := h.roomClients[roomCode][userID]
-	h.roomsMu.RUnlock()
-	if ok && client != nil {
-		client.Send(msg)
+func (h *Hub) HandleMasterSuccession(roomCode string, departedUserID uuid.UUID) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, roomCode)
+	if err != nil || room.MasterID != departedUserID {
+		return
 	}
+
+	// Trouver le joueur connecté le plus ancien
+	players, err := h.roomRepo.GetPlayers(ctx, roomCode)
+	if err != nil || len(players) == 0 {
+		return
+	}
+
+	var newMaster *domain.RoomPlayer
+	for _, p := range players {
+		if p.ID != departedUserID && p.IsConnected {
+			newMaster = &p
+			break
+		}
+	}
+
+	// Si aucun connecté, prendre le premier non-parti
+	if newMaster == nil {
+		for _, p := range players {
+			if p.ID != departedUserID {
+				newMaster = &p
+				break
+			}
+		}
+	}
+
+	if newMaster != nil {
+		_ = h.roomRepo.UpdateRoomMaster(ctx, roomCode, newMaster.ID)
+		h.BroadcastSystemMessage(roomCode, fmt.Sprintf("👑 %s est maintenant le Master de la salle !", newMaster.Nickname))
+		h.SyncRoom(roomCode)
+	}
+}
+
+func (h *Hub) HandleMessage(client *Client, msg domain.WSMessage) {
+	switch {
+	case strings.HasPrefix(msg.Type, "game:"):
+		if h.gameHandler != nil {
+			h.gameHandler.HandleGameAction(client, msg.Type, msg.Payload)
+		}
+	case msg.Type == "room:chat":
+		h.handleChat(client, msg.Payload)
+	case msg.Type == "room:update_settings":
+		h.handleUpdateSettings(client, msg.Payload)
+	case msg.Type == "room:kick":
+		h.handleKick(client, msg.Payload)
+	case msg.Type == "room:ban":
+		h.handleBan(client, msg.Payload)
+	case msg.Type == "room:mute":
+		h.handleMute(client, msg.Payload)
+	case msg.Type == "room:rematch":
+		h.handleRematch(client)
+	case msg.Type == "room:sync":
+		h.SyncRoom(client.roomCode)
+	}
+}
+
+func (h *Hub) handleChat(client *Client, payload json.RawMessage) {
+	ctx := context.Background()
+	p, err := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
+	if err != nil {
+		return
+	}
+
+	// Vérifier si le joueur est muet
+	if p.IsMuted {
+		client.SendError("Vous avez été rendu muet par le Master")
+		return
+	}
+
+	// Rate-limiting anti-spam (max 5 messages en 3 secondes)
+	h.msgRateMu.Lock()
+	now := time.Now()
+	times := h.msgRates[client.userID]
+	recentTimes := make([]time.Time, 0, len(times))
+	for _, t := range times {
+		if now.Sub(t) < 3*time.Second {
+			recentTimes = append(recentTimes, t)
+		}
+	}
+	if len(recentTimes) >= 5 {
+		h.msgRateMu.Unlock()
+		client.SendError("Vous envoyez des messages trop vite !")
+		return
+	}
+	recentTimes = append(recentTimes, now)
+	h.msgRates[client.userID] = recentTimes
+	h.msgRateMu.Unlock()
+
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return
+	}
+
+	content := strings.TrimSpace(body.Content)
+	if content == "" || len(content) > 300 {
+		return
+	}
+
+	chatMsg := &domain.ChatMessage{
+		ID:        uuid.New().String(),
+		SenderID:  p.ID,
+		Sender:    p.Nickname,
+		Mascot:    p.Mascot,
+		Color:     p.Color,
+		Content:   content,
+		IsSystem:  false,
+		CreatedAt: time.Now(),
+	}
+
+	_ = h.roomRepo.AddChatMessage(ctx, client.roomCode, chatMsg)
+
+	msgBytes, _ := json.Marshal(chatMsg)
+	h.BroadcastToRoom(client.roomCode, domain.WSMessage{
+		Type:    "room:chat_message",
+		Payload: msgBytes,
+	})
+}
+
+func (h *Hub) handleUpdateSettings(client *Client, payload json.RawMessage) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
+	if err != nil || room.MasterID != client.userID {
+		client.SendError("Seul le Master peut modifier les paramètres")
+		return
+	}
+
+	if room.Status != domain.RoomStatusInLobby {
+		client.SendError("Impossible de modifier les paramètres pendant une manche")
+		return
+	}
+
+	var newSettings domain.RoomSettings
+	if err := json.Unmarshal(payload, &newSettings); err != nil {
+		return
+	}
+
+	// Valider les bornes
+	if newSettings.WordLength < 3 || newSettings.WordLength > 8 {
+		newSettings.WordLength = 5
+	}
+	if newSettings.RoundDuration < 30 || newSettings.RoundDuration > 180 {
+		newSettings.RoundDuration = 60
+	}
+	if newSettings.MaxRounds < 1 || newSettings.MaxRounds > 10 {
+		newSettings.MaxRounds = 3
+	}
+	if newSettings.MaxAttempts < 4 || newSettings.MaxAttempts > 8 {
+		newSettings.MaxAttempts = 6
+	}
+
+	_ = h.roomRepo.UpdateRoomSettings(ctx, client.roomCode, newSettings)
+	h.SyncRoom(client.roomCode)
+}
+
+func (h *Hub) handleKick(client *Client, payload json.RawMessage) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
+	if err != nil || room.MasterID != client.userID {
+		client.SendError("Action réservée au Master")
+		return
+	}
+
+	var body struct {
+		TargetID uuid.UUID `json:"target_id"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil || body.TargetID == client.userID {
+		return
+	}
+
+	targetPlayer, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, body.TargetID)
+	name := "Un joueur"
+	if targetPlayer != nil {
+		name = targetPlayer.Nickname
+	}
+
+	// Fermer la connexion du joueur ciblé
+	h.roomsMu.RLock()
+	if clients, ok := h.roomClients[client.roomCode]; ok {
+		if targetClient, found := clients[body.TargetID]; found {
+			targetClient.SendError("Vous avez été expulsé de la salle par le Master")
+			go func(c *Client) {
+				time.Sleep(200 * time.Millisecond)
+				c.Close()
+			}(targetClient)
+		}
+	}
+	h.roomsMu.RUnlock()
+
+	_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, body.TargetID)
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("👢 %s a été expulsé par le Master", name))
+	h.SyncRoom(client.roomCode)
+}
+
+func (h *Hub) handleBan(client *Client, payload json.RawMessage) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
+	if err != nil || room.MasterID != client.userID {
+		client.SendError("Action réservée au Master")
+		return
+	}
+
+	var body struct {
+		TargetID uuid.UUID `json:"target_id"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil || body.TargetID == client.userID {
+		return
+	}
+
+	targetPlayer, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, body.TargetID)
+	name := "Un joueur"
+	if targetPlayer != nil {
+		name = targetPlayer.Nickname
+	}
+
+	h.roomsMu.RLock()
+	if clients, ok := h.roomClients[client.roomCode]; ok {
+		if targetClient, found := clients[body.TargetID]; found {
+			targetClient.SendError("Vous avez été banni de la salle par le Master")
+			go func(c *Client) {
+				time.Sleep(200 * time.Millisecond)
+				c.Close()
+			}(targetClient)
+		}
+	}
+	h.roomsMu.RUnlock()
+
+	_ = h.roomRepo.BanPlayer(ctx, client.roomCode, body.TargetID)
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("⛔ %s a été banni de la salle", name))
+	h.SyncRoom(client.roomCode)
+}
+
+func (h *Hub) handleMute(client *Client, payload json.RawMessage) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
+	if err != nil || room.MasterID != client.userID {
+		client.SendError("Action réservée au Master")
+		return
+	}
+
+	var body struct {
+		TargetID uuid.UUID `json:"target_id"`
+		Mute     bool      `json:"mute"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil || body.TargetID == client.userID {
+		return
+	}
+
+	_ = h.roomRepo.SetPlayerMuted(ctx, client.roomCode, body.TargetID, body.Mute)
+	targetPlayer, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, body.TargetID)
+	name := "Un joueur"
+	if targetPlayer != nil {
+		name = targetPlayer.Nickname
+	}
+
+	action := "rendu muet"
+	if !body.Mute {
+		action = "autorisé à parler"
+	}
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("🔇 %s a été %s par le Master", name, action))
+	h.SyncRoom(client.roomCode)
+}
+
+func (h *Hub) handleRematch(client *Client) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
+	if err != nil || room.MasterID != client.userID {
+		client.SendError("Seul le Master peut relancer la salle")
+		return
+	}
+
+	// Remettre la salle en lobby, conserver les scores et réintégrer les spectateurs
+	_ = h.roomRepo.UpdateRoomStatus(ctx, client.roomCode, domain.RoomStatusInLobby)
+	_ = h.roomRepo.UpdateRound(ctx, client.roomCode, 0, nil)
+
+	// Tous les spectateurs redeviennent joueurs
+	players, _ := h.roomRepo.GetPlayers(ctx, client.roomCode)
+	for _, p := range players {
+		if p.IsSpectator {
+			_ = h.roomRepo.SetPlayerSpectator(ctx, client.roomCode, p.ID, false)
+		}
+	}
+
+	h.BroadcastSystemMessage(client.roomCode, "🔄 Le Master a relancé la salle en Lobby pour une revanche !")
+	h.SyncRoom(client.roomCode)
 }
 
 func (h *Hub) SyncRoom(roomCode string) {
@@ -130,12 +428,16 @@ func (h *Hub) SyncRoom(roomCode string) {
 		return
 	}
 
-	chat, _ := h.roomRepo.GetRecentChat(ctx, roomCode)
+	// Ne jamais exposer le mot secret en cours de manche aux clients
+	roomSafe := *room
+	if roomSafe.Status == domain.RoomStatusInGame {
+		roomSafe.SecretWord = ""
+	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
-		"room": room,
-		"chat": chat,
-	})
+	payload, err := json.Marshal(roomSafe)
+	if err != nil {
+		return
+	}
 
 	h.BroadcastToRoom(roomCode, domain.WSMessage{
 		Type:    "room:sync",
@@ -143,230 +445,50 @@ func (h *Hub) SyncRoom(roomCode string) {
 	})
 }
 
-func (h *Hub) BroadcastSystemMessage(roomCode, text string) {
+func (h *Hub) BroadcastSystemMessage(roomCode, message string) {
 	ctx := context.Background()
-	msg := &domain.ChatMessage{
+	sysMsg := &domain.ChatMessage{
 		ID:        uuid.New().String(),
-		SenderID:  uuid.Nil,
 		Sender:    "Système",
-		Content:   text,
+		Mascot:    "meeple",
+		Color:     "#1D4ED8",
+		Content:   message,
 		IsSystem:  true,
 		CreatedAt: time.Now(),
 	}
-	_ = h.roomRepo.AddChatMessage(ctx, roomCode, msg)
+	_ = h.roomRepo.AddChatMessage(ctx, roomCode, sysMsg)
 
-	payload, _ := json.Marshal(msg)
+	payload, _ := json.Marshal(sysMsg)
 	h.BroadcastToRoom(roomCode, domain.WSMessage{
-		Type:    "chat:message",
+		Type:    "room:chat_message",
 		Payload: payload,
 	})
 }
 
-// Dispatcher central des messages WebSocket reçus des clients
-func (h *Hub) Dispatch(client *Client, msg domain.WSMessage) {
-	ctx := context.Background()
-
-	switch msg.Type {
-	case "chat:send":
-		h.handleChatSend(ctx, client, msg.Payload)
-	case "room:update_settings":
-		h.handleUpdateSettings(ctx, client, msg.Payload)
-	case "room:action":
-		h.handleModerationAction(ctx, client, msg.Payload)
-	case "room:leave":
-		h.handlePlayerLeave(ctx, client)
-	default:
-		// Déléguer aux handlers de jeu (ex: game:start, game:submit_guess)
-		if h.gameHandler != nil {
-			h.gameHandler.HandleGameAction(client, msg.Type, msg.Payload)
+func (h *Hub) BroadcastToRoom(roomCode string, msg domain.WSMessage) {
+	h.roomsMu.RLock()
+	clients := make([]*Client, 0)
+	if roomMap, ok := h.roomClients[roomCode]; ok {
+		for _, c := range roomMap {
+			clients = append(clients, c)
 		}
 	}
+	h.roomsMu.RUnlock()
+
+	for _, c := range clients {
+		c.Send(msg)
+	}
 }
 
-func (h *Hub) handleChatSend(ctx context.Context, client *Client, payload json.RawMessage) {
-	var body struct {
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal(payload, &body); err != nil || len(body.Content) == 0 {
-		return
-	}
+func (h *Hub) GetRoomClients(roomCode string) []*Client {
+	h.roomsMu.RLock()
+	defer h.roomsMu.RUnlock()
 
-	// Rate limiting chat : max 5 messages par 3 secondes
-	allowed, _ := h.roomRepo.CheckRateLimit(ctx, fmt.Sprintf("chat:%s:%s", client.roomCode, client.userID), 5, 3*time.Second)
-	if !allowed {
-		client.SendError("Vous envoyez des messages trop rapidement")
-		return
-	}
-
-	player, err := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
-	if err != nil || player == nil {
-		return
-	}
-
-	// Vérification du statut Mute
-	if player.IsMuted {
-		client.SendError("Vous êtes actuellement muet dans cette salle")
-		return
-	}
-
-	chatMsg := &domain.ChatMessage{
-		ID:        uuid.New().String(),
-		SenderID:  client.userID,
-		Sender:    player.DisplayUsername,
-		AvatarURL: player.AvatarURL,
-		Content:   body.Content,
-		IsSystem:  false,
-		CreatedAt: time.Now(),
-	}
-
-	_ = h.roomRepo.AddChatMessage(ctx, client.roomCode, chatMsg)
-
-	data, _ := json.Marshal(chatMsg)
-	h.BroadcastToRoom(client.roomCode, domain.WSMessage{
-		Type:    "chat:message",
-		Payload: data,
-	})
-}
-
-func (h *Hub) handleUpdateSettings(ctx context.Context, client *Client, payload json.RawMessage) {
-	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
-	if err != nil {
-		return
-	}
-	if room.MasterID != client.userID {
-		client.SendError("Seul le Master peut modifier les paramètres de la salle")
-		return
-	}
-	if room.Status != domain.RoomStatusInLobby {
-		client.SendError("Impossible de modifier les règles pendant une partie")
-		return
-	}
-
-	var newSettings domain.RoomSettings
-	if err := json.Unmarshal(payload, &newSettings); err != nil {
-		client.SendError("Paramètres invalides")
-		return
-	}
-
-	// Bornes de sécurité
-	if newSettings.WordLength < 4 || newSettings.WordLength > 8 {
-		newSettings.WordLength = 5
-	}
-	if newSettings.RoundDuration < 30 || newSettings.RoundDuration > 300 {
-		newSettings.RoundDuration = 60
-	}
-	if newSettings.MaxRounds < 1 || newSettings.MaxRounds > 10 {
-		newSettings.MaxRounds = 3
-	}
-
-	_ = h.roomRepo.UpdateRoomSettings(ctx, client.roomCode, newSettings)
-	h.BroadcastSystemMessage(client.roomCode, "Les paramètres de la partie ont été mis à jour par le Master")
-	h.SyncRoom(client.roomCode)
-}
-
-func (h *Hub) handleModerationAction(ctx context.Context, client *Client, payload json.RawMessage) {
-	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
-	if err != nil || room.MasterID != client.userID {
-		client.SendError("Privilège insuffisant : vous n'êtes pas le Master")
-		return
-	}
-
-	var action struct {
-		TargetID uuid.UUID `json:"target_user_id"`
-		Type     string    `json:"action_type"` // "kick", "ban", "mute", "unmute"
-	}
-	if err := json.Unmarshal(payload, &action); err != nil {
-		return
-	}
-
-	// INTERDICTION ABSOLUE de cibler soi-même
-	if action.TargetID == client.userID {
-		client.SendError("Action impossible sur votre propre profil")
-		return
-	}
-
-	targetPlayer, err := h.roomRepo.GetPlayer(ctx, client.roomCode, action.TargetID)
-	if err != nil || targetPlayer == nil {
-		client.SendError("Joueur cible introuvable")
-		return
-	}
-
-	switch action.Type {
-	case "mute":
-		_ = h.roomRepo.UpdatePlayerMute(ctx, client.roomCode, action.TargetID, true)
-		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été réduit au silence par le Master", targetPlayer.DisplayUsername))
-		h.SyncRoom(client.roomCode)
-
-	case "unmute":
-		_ = h.roomRepo.UpdatePlayerMute(ctx, client.roomCode, action.TargetID, false)
-		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s peut de nouveau parler", targetPlayer.DisplayUsername))
-		h.SyncRoom(client.roomCode)
-
-	case "kick":
-		h.roomsMu.RLock()
-		targetClient := h.roomClients[client.roomCode][action.TargetID]
-		h.roomsMu.RUnlock()
-
-		_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, action.TargetID)
-		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été expulsé par le Master", targetPlayer.DisplayUsername))
-		h.SyncRoom(client.roomCode)
-
-		if targetClient != nil {
-			targetClient.SendError("Vous avez été expulsé de la salle")
-			targetClient.Close()
-		}
-
-	case "ban":
-		_ = h.roomRepo.BanUser(ctx, client.roomCode, action.TargetID, 30*time.Minute)
-		h.roomsMu.RLock()
-		targetClient := h.roomClients[client.roomCode][action.TargetID]
-		h.roomsMu.RUnlock()
-
-		_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, action.TargetID)
-		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été banni de la salle", targetPlayer.DisplayUsername))
-		h.SyncRoom(client.roomCode)
-
-		if targetClient != nil {
-			targetClient.SendError("Vous avez été banni de cette salle pour 30 minutes")
-			targetClient.Close()
+	clients := make([]*Client, 0)
+	if roomMap, ok := h.roomClients[roomCode]; ok {
+		for _, c := range roomMap {
+			clients = append(clients, c)
 		}
 	}
-}
-
-func (h *Hub) handlePlayerLeave(ctx context.Context, client *Client) {
-	player, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
-	isMaster := false
-	if player != nil && player.Role == domain.RoleMaster {
-		isMaster = true
-	}
-
-	_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, client.userID)
-
-	if player != nil {
-		h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle", player.DisplayUsername))
-	}
-
-	// Si le Master est parti, passation automatique au joueur le plus ancien
-	if isMaster {
-		h.PromoteNextMaster(ctx, client.roomCode)
-	}
-
-	h.SyncRoom(client.roomCode)
-	client.Close()
-}
-
-// PromoteNextMaster sélectionne le plus ancien joueur actif pour devenir Master
-func (h *Hub) PromoteNextMaster(ctx context.Context, roomCode string) {
-	players, err := h.roomRepo.GetPlayers(ctx, roomCode)
-	if err != nil || len(players) == 0 {
-		// La salle est vide, elle sera fermée par le worker ou basculée
-		_ = h.roomRepo.UpdateRoomStatus(ctx, roomCode, domain.RoomStatusClosed)
-		_ = h.sessionRepo.UpdateStatus(ctx, roomCode, domain.RoomStatusClosed)
-		return
-	}
-
-	// Le premier dans la liste triée est le plus ancien
-	newMaster := players[0]
-	_ = h.roomRepo.SetMaster(ctx, roomCode, newMaster.UserID)
-	h.BroadcastSystemMessage(roomCode, fmt.Sprintf("👑 %s est maintenant le nouveau Master de la salle", newMaster.DisplayUsername))
+	return clients
 }

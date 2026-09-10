@@ -17,258 +17,151 @@
               </span>
             </div>
             <span class="block text-[11px] font-display font-bold uppercase tracking-widest text-game-blue">
-              Jeux de Plateau & Wordle Desktop
+              Wordle Multijoueur Desktop (3 à 8 Lettres)
             </span>
           </div>
         </div>
 
-        <!-- Profil / Statut / Bouton de connexion -->
-        <div class="flex items-center space-x-4">
-          <!-- Connecté localement -->
-          <div v-if="authStore.user && !authStore.isGuest" class="flex items-center space-x-3 border-[3px] border-ink-black bg-board-white px-4 py-2 rounded-2xl shadow-pop-xs">
-            <GameMascot name="knight" mood="idle" size="sm" />
-            <div class="text-left">
-              <div class="font-display font-black text-sm text-ink-black uppercase">
-                {{ authStore.displayName }}
-              </div>
-              <div class="text-[11px] font-condensed text-ink-black/60 uppercase">
-                Score Max : {{ authStore.stats?.highest_score || 0 }} pts
-              </div>
+        <!-- Profil Invité en direct -->
+        <div class="flex items-center space-x-3 border-[3px] border-ink-black bg-board-white px-4 py-2 rounded-2xl shadow-pop-xs">
+          <GameMascot :name="profileStore.mascot" mood="idle" size="sm" />
+          <div class="text-left">
+            <div class="font-display font-black text-sm text-ink-black uppercase">
+              {{ profileStore.nickname }}
             </div>
-            
-            <button
-              @click="authStore.logout"
-              title="Déconnexion"
-              class="p-1.5 border-2 border-ink-black bg-board-cream hover:bg-game-red hover:text-board-white rounded-xl shadow-pop-xs active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-none ml-2"
-            >
-              <LogOut class="w-4 h-4" />
-            </button>
-          </div>
-
-          <!-- Si invité connecté -->
-          <div v-else-if="authStore.user && authStore.isGuest" class="flex items-center space-x-3">
-            <div class="flex items-center space-x-2 border-[3px] border-ink-black bg-board-white px-3 py-1.5 rounded-xl shadow-pop-xs">
-              <GameMascot name="domino" mood="idle" size="sm" />
-              <div class="text-left">
-                <span class="font-display font-black text-xs uppercase text-ink-black">{{ authStore.displayName }}</span>
-                <span class="ml-1.5 border border-ink-black px-1.5 py-0.5 rounded-md bg-game-yellow font-condensed text-[9px] uppercase">
-                  Invité
-                </span>
-              </div>
+            <div class="text-[10px] font-condensed text-ink-black/60 uppercase">
+              Mode Invité Instantané
             </div>
-
-            <AppButton
-              variant="secondary"
-              size="sm"
-              @click="showAuthModal = true"
-            >
-              <UserCheck class="w-3.5 h-3.5 mr-1.5" />
-              <span>Sauvegarder mon compte</span>
-            </AppButton>
           </div>
-
-          <!-- Si non connecté -->
-          <AppButton
-            v-else
-            variant="primary"
-            size="md"
-            @click="showAuthModal = true"
-          >
-            <LogIn class="w-4 h-4 mr-2" />
-            <span>Connexion / Inscription</span>
-          </AppButton>
         </div>
       </div>
     </header>
 
-    <!-- Contenu Principal -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-12 flex flex-col justify-center">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+    <!-- Corps de la page d'accueil -->
+    <main class="max-w-7xl mx-auto px-6 py-10 flex-1 flex flex-col items-center justify-center w-full">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full max-w-6xl">
         
-        <!-- Colonne Gauche : Titre d'Affiche de Festival & Mascottes -->
-        <div class="lg:col-span-7 space-y-6">
-          <div class="inline-flex items-center space-x-2 border-[3px] border-ink-black px-4 py-1.5 rounded-full bg-game-pink font-condensed text-xs uppercase tracking-wider shadow-pop-xs">
-            <Sparkles class="w-4 h-4 text-ink-black" />
-            <span>Tournois Multijoueur en Direct</span>
-          </div>
+        <!-- Colonne Gauche : Personnalisation Invité -->
+        <div class="lg:col-span-5 space-y-6">
+          <AppCard variant="white" shadow="lg">
+            <div class="flex items-center space-x-3 pb-4 mb-4 border-b-2 border-ink-black">
+              <UserCircle class="w-6 h-6 text-game-blue" />
+              <h2 class="font-display font-black text-xl uppercase tracking-wide">Mon Profil Festival</h2>
+            </div>
 
-          <h1 class="font-display font-black text-6xl sm:text-7xl leading-[1.05] tracking-tight uppercase text-ink-black">
-            L'Arène Festive du <span class="bg-game-yellow px-2 border-[4px] border-ink-black inline-block transform -rotate-1 shadow-pop-md">Wordle</span> Multijoueur !
-          </h1>
+            <!-- Pseudo -->
+            <div class="space-y-2 mb-6">
+              <label class="block font-display font-bold text-xs uppercase tracking-wider text-ink-black/70">
+                Ton Pseudo de Joueur
+              </label>
+              <AppInput
+                v-model="inputNickname"
+                maxlength="15"
+                placeholder="Ex: WordleKing"
+                @input="updateProfile"
+              />
+            </div>
 
-          <p class="font-body font-semibold text-ink-black/80 text-lg leading-relaxed max-w-xl">
-            Entrez sur le plateau en 1 clic. Affrontez vos amis manche par manche, observez leurs tuiles en temps réel sans triche et partagez vos victoires avec fierté !
-          </p>
+            <!-- Choix de Mascotte -->
+            <div class="space-y-3 mb-6">
+              <label class="block font-display font-bold text-xs uppercase tracking-wider text-ink-black/70">
+                Choisis ta Mascotte Fétiche
+              </label>
+              <div class="grid grid-cols-3 gap-3">
+                <button
+                  v-for="m in MASCOTS"
+                  :key="m.id"
+                  @click="selectMascot(m.id)"
+                  :class="[
+                    'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none relative',
+                    profileStore.mascot === m.id
+                      ? 'bg-game-yellow shadow-pop-sm scale-105 z-10'
+                      : 'bg-board-cream hover:bg-board-white shadow-pop-xs'
+                  ]"
+                >
+                  <GameMascot :name="m.id" :mood="profileStore.mascot === m.id ? 'happy' : 'idle'" size="md" />
+                  <span class="font-display font-black text-[11px] uppercase mt-2 text-ink-black text-center truncate w-full">
+                    {{ m.id }}
+                  </span>
+                </button>
+              </div>
+            </div>
 
-          <!-- Badges Avantages Façon Cartes de Jeu -->
-          <div class="grid grid-cols-3 gap-4 pt-2 max-w-xl">
-            <AppCard variant="white" shadow="sm" class="space-y-1">
-              <Zap class="w-5 h-5 text-game-blue mb-1" />
-              <div class="font-display font-black uppercase text-sm text-ink-black">Grace Period</div>
-              <div class="text-xs font-body font-medium text-ink-black/70">45s en cas de déco</div>
-            </AppCard>
-
-            <AppCard variant="white" shadow="sm" class="space-y-1">
-              <EyeOff class="w-5 h-5 text-game-red mb-1" />
-              <div class="font-display font-black uppercase text-sm text-ink-black">State Masking</div>
-              <div class="text-xs font-body font-medium text-ink-black/70">Direct sans spoiler</div>
-            </AppCard>
-
-            <AppCard variant="white" shadow="sm" class="space-y-1">
-              <Trophy class="w-5 h-5 text-game-green mb-1" />
-              <div class="font-display font-black uppercase text-sm text-ink-black">Piste Score</div>
-              <div class="text-xs font-body font-medium text-ink-black/70">Cumul de session</div>
-            </AppCard>
-          </div>
+            <!-- Mascotte active en vitrine -->
+            <div class="p-4 rounded-2xl border-2 border-ink-black bg-board-cream flex items-center space-x-4">
+              <GameMascot :name="profileStore.mascot" mood="running" size="lg" />
+              <div>
+                <span class="font-display font-black text-base uppercase text-ink-black block">
+                  {{ activeMascotInfo?.name }}
+                </span>
+                <span class="text-xs font-body text-ink-black/70">
+                  {{ activeMascotInfo?.desc }}
+                </span>
+              </div>
+            </div>
+          </AppCard>
         </div>
 
-        <!-- Colonne Droite : Cartouche d'action Rejoindre / Créer -->
-        <div class="lg:col-span-5">
-          <AppCard variant="white" shadow="lg" class="p-7">
-            <!-- Tabs Stylisées -->
-            <div class="flex border-[3px] border-ink-black rounded-2xl bg-board-cream p-1 mb-6 shadow-pop-xs">
-              <button
-                @click="activeTab = 'join'"
-                :class="[
-                  'flex-1 py-2.5 rounded-xl font-display font-black text-sm uppercase transition-none flex items-center justify-center space-x-2',
-                  activeTab === 'join' ? 'bg-game-yellow border-2 border-ink-black shadow-pop-xs text-ink-black' : 'text-ink-black/60 hover:text-ink-black'
-                ]"
-              >
-                <LogIn class="w-4 h-4" />
-                <span>Rejoindre</span>
-              </button>
-
-              <button
-                @click="activeTab = 'create'"
-                :class="[
-                  'flex-1 py-2.5 rounded-xl font-display font-black text-sm uppercase transition-none flex items-center justify-center space-x-2',
-                  activeTab === 'create' ? 'bg-game-blue border-2 border-ink-black shadow-pop-xs text-board-white' : 'text-ink-black/60 hover:text-ink-black'
-                ]"
-              >
-                <PlusCircle class="w-4 h-4" />
-                <span>Créer Salon</span>
-              </button>
+        <!-- Colonne Droite : Lancer ou Rejoindre une Partie -->
+        <div class="lg:col-span-7 space-y-6">
+          <!-- Créer une Salle -->
+          <AppCard variant="yellow" shadow="lg" class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <Sparkles class="w-7 h-7 text-ink-black" />
+                <h2 class="font-display font-black text-2xl uppercase tracking-tight">Créer une Room Privée</h2>
+              </div>
+              <AppBadge variant="master">Gratuit & Instantané</AppBadge>
             </div>
 
-            <!-- TAB : REJOINDRE -->
-            <div v-if="activeTab === 'join'" class="space-y-4">
-              <div>
-                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
-                  Code de la Salle (ex: ABCD-12)
-                </label>
-                <AppInput
-                  v-model="joinCode"
-                  placeholder="ABCD-12"
-                  maxlength="10"
-                  custom-class="text-center font-condensed tracking-widest text-2xl uppercase font-black"
-                />
-              </div>
+            <p class="font-body text-sm text-ink-black/80">
+              Invite tes amis dans ton salon de jeu de société personnalisé. Tu seras désigné <strong>Master</strong> pour lancer les manches de 3 à 8 lettres à ta convenance.
+            </p>
 
-              <!-- Pseudo si non connecté -->
-              <div v-if="!authStore.user">
-                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
-                  Votre Pseudo d'invité
-                </label>
-                <AppInput
-                  v-model="guestName"
-                  placeholder="Laisser vide pour aléatoire"
-                  maxlength="20"
-                />
-              </div>
+            <AppButton
+              variant="secondary"
+              size="lg"
+              class="w-full"
+              :disabled="isLoading"
+              @click="handleCreateRoom"
+            >
+              <Play class="w-6 h-6 mr-3 fill-current" />
+              <span>Créer la Salle & Devenir Master</span>
+            </AppButton>
+          </AppCard>
 
-              <AppButton
-                variant="primary"
-                size="lg"
-                :disabled="!joinCode.trim() || isLoading"
-                class="w-full mt-2"
-                @click="handleJoinRoom"
-              >
-                <Play class="w-5 h-5 fill-current mr-2" />
-                <span>{{ isLoading ? 'Connexion...' : 'Rejoindre la Partie' }}</span>
-              </AppButton>
+          <!-- Rejoindre une Salle Existante -->
+          <AppCard variant="white" shadow="lg" class="space-y-4">
+            <div class="flex items-center space-x-3 pb-3 border-b-2 border-ink-black">
+              <LogIn class="w-6 h-6 text-game-blue" />
+              <h2 class="font-display font-black text-xl uppercase tracking-wide">Rejoindre une Room</h2>
             </div>
 
-            <!-- TAB : CRÉER -->
-            <div v-if="activeTab === 'create'" class="space-y-4">
-              <div>
-                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
-                  Longueur des Mots
-                </label>
-                <div class="grid grid-cols-3 gap-2">
-                  <button
-                    v-for="len in [5, 6, 7]"
-                    :key="len"
-                    @click="newRoomSettings.word_length = len"
-                    :class="[
-                      'py-2 rounded-xl font-display font-black text-sm uppercase border-[3px] border-ink-black transition-none',
-                      newRoomSettings.word_length === len
-                        ? 'bg-game-yellow shadow-pop-xs text-ink-black'
-                        : 'bg-board-cream text-ink-black/60 hover:bg-board-white'
-                    ]"
-                  >
-                    {{ len }} Lettres
-                  </button>
-                </div>
-              </div>
+            <p class="font-body text-sm text-ink-black/80">
+              Un ami t'a partagé un code court (ex: <code>ABCD-12</code>) ? Tape-le ci-dessous pour entrer dans la salle !
+            </p>
 
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
-                    Chrono / Manche
-                  </label>
-                  <select
-                    v-model="newRoomSettings.round_duration"
-                    class="w-full bg-board-white border-[3px] border-ink-black rounded-xl px-3 py-2 text-sm font-display font-bold uppercase focus:outline-none focus:shadow-pop-xs"
-                  >
-                    <option :value="45">45 secondes</option>
-                    <option :value="60">60 secondes</option>
-                    <option :value="90">90 secondes</option>
-                    <option :value="120">120 secondes</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
-                    Manches
-                  </label>
-                  <select
-                    v-model="newRoomSettings.max_rounds"
-                    class="w-full bg-board-white border-[3px] border-ink-black rounded-xl px-3 py-2 text-sm font-display font-bold uppercase focus:outline-none focus:shadow-pop-xs"
-                  >
-                    <option :value="1">1 Manche</option>
-                    <option :value="3">3 Manches</option>
-                    <option :value="5">5 Manches</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Pseudo si non connecté -->
-              <div v-if="!authStore.user">
-                <label class="block text-xs font-display font-black uppercase tracking-wider text-ink-black mb-1.5">
-                  Votre Pseudo
-                </label>
+            <form @submit.prevent="handleJoinRoom" class="space-y-3">
+              <div class="flex gap-3">
                 <AppInput
-                  v-model="guestName"
-                  placeholder="Laisser vide pour aléatoire"
-                  maxlength="20"
+                  v-model="inputRoomCode"
+                  placeholder="CODE (ex: ABCD-12)"
+                  maxlength="7"
+                  class="uppercase text-center font-condensed font-black tracking-widest text-lg"
                 />
+                <AppButton
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  :disabled="isLoading || !inputRoomCode.trim()"
+                >
+                  <span>Entrer</span>
+                </AppButton>
               </div>
+            </form>
 
-              <AppButton
-                variant="secondary"
-                size="lg"
-                :disabled="isLoading"
-                class="w-full mt-2"
-                @click="handleCreateRoom"
-              >
-                <Sparkles class="w-5 h-5 mr-2" />
-                <span>{{ isLoading ? 'Création en cours...' : 'Ouvrir le Salon Master' }}</span>
-              </AppButton>
-            </div>
-
-            <!-- Message d'erreur -->
-            <div v-if="error" class="mt-4 p-3 rounded-xl bg-game-red/10 border-2 border-game-red text-game-red text-xs font-black text-center uppercase tracking-wide">
-              {{ error }}
+            <div v-if="errorMessage" class="p-3 bg-game-red/10 border-2 border-game-red rounded-xl text-game-red font-display font-bold text-xs uppercase text-center">
+              ⚠️ {{ errorMessage }}
             </div>
           </AppCard>
         </div>
@@ -276,96 +169,102 @@
       </div>
     </main>
 
-    <!-- Footer Festival -->
-    <footer class="border-t-[3px] border-ink-black bg-board-white py-5 text-center text-xs font-display font-bold uppercase tracking-wider text-ink-black/70">
-      MiniGames &copy; 2026 • Festival Pop-Moderniste de Jeux de Plateau • Go 1.23+ & Nuxt 3
+    <!-- Footer Pop Festival -->
+    <footer class="border-t-[3px] border-ink-black bg-board-white py-4 px-6 text-center text-xs font-display font-bold uppercase tracking-wider text-ink-black/60">
+      MiniGames — 100% In-Memory & Redis 7 — Moteur Wordle Server-Authoritative Pop Moderniste
     </footer>
-
-    <!-- Modale Connexion / Inscription / Discord -->
-    <AuthModal
-      :is-open="showAuthModal"
-      @close="showAuthModal = false"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { Sparkles, Zap, EyeOff, Trophy, LogIn, PlusCircle, Play, LogOut, UserCheck } from 'lucide-vue-next'
-import { useAuthStore } from '~/stores/auth'
-import GameMascot from '~/components/ui/GameMascot.vue'
+import { ref, computed, onMounted } from 'vue'
+import { UserCircle, Sparkles, Play, LogIn } from 'lucide-vue-next'
+import { useProfileStore, MASCOTS } from '~/stores/profile'
+import type { MascotName } from '~/components/ui/GameMascot.vue'
 import AppCard from '~/components/ui/AppCard.vue'
 import AppButton from '~/components/ui/AppButton.vue'
+import AppBadge from '~/components/ui/AppBadge.vue'
 import AppInput from '~/components/ui/AppInput.vue'
-import AuthModal from '~/components/auth/AuthModal.vue'
+import GameMascot from '~/components/ui/GameMascot.vue'
 
-const router = useRouter()
+const profileStore = useProfileStore()
 const config = useRuntimeConfig()
-const authStore = useAuthStore()
+const router = useRouter()
 
-const activeTab = ref<'join' | 'create'>('join')
-const joinCode = ref('')
-const guestName = ref('')
+const inputNickname = ref('')
+const inputRoomCode = ref('')
 const isLoading = ref(false)
-const error = ref<string | null>(null)
-const showAuthModal = ref(false)
-
-const newRoomSettings = reactive({
-  game_type: 'wordle',
-  word_length: 5,
-  round_duration: 60,
-  max_rounds: 3,
-  max_attempts: 6,
-  language: 'fr',
-})
+const errorMessage = ref('')
 
 onMounted(() => {
-  authStore.initAuth()
+  profileStore.initProfile()
+  inputNickname.value = profileStore.nickname
 })
 
-const ensureAuth = async () => {
-  if (!authStore.user || !authStore.token) {
-    await authStore.loginGuest(guestName.value)
-  }
+const activeMascotInfo = computed(() => {
+  return MASCOTS.find(m => m.id === profileStore.mascot) || MASCOTS[0]
+})
+
+const selectMascot = (id: MascotName) => {
+  profileStore.setProfile(inputNickname.value, id)
 }
 
-const handleJoinRoom = async () => {
-  error.value = null
+const updateProfile = () => {
+  profileStore.setProfile(inputNickname.value, profileStore.mascot)
+}
+
+const handleCreateRoom = async () => {
   isLoading.value = true
+  errorMessage.value = ''
+  updateProfile()
+
   try {
-    await ensureAuth()
-    const cleanCode = joinCode.value.toUpperCase().trim()
-    const res = await $fetch<any>(`${config.public.apiUrl}/api/rooms/${cleanCode}/join`, {
+    const apiBase = config.public.apiUrl || 'http://localhost:8080'
+    const res: any = await $fetch(`${apiBase}/api/rooms`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${authStore.token}` },
+      body: {
+        nickname: profileStore.nickname,
+        mascot: profileStore.mascot,
+        color: profileStore.color,
+      },
     })
 
-    if (res.room.status === 'in_game') {
-      router.push(`/game/${cleanCode}`)
-    } else {
-      router.push(`/lobby/${cleanCode}`)
+    if (res?.room?.code && res?.session_token) {
+      profileStore.setSession(res.session_token, res.room.code)
+      router.push(`/room/${res.room.code}`)
     }
   } catch (err: any) {
-    error.value = err.data?.error || 'Impossible de rejoindre la salle (code invalide ou salle fermée)'
+    errorMessage.value = err?.data?.error || 'Erreur lors de la création de la salle'
   } finally {
     isLoading.value = false
   }
 }
 
-const handleCreateRoom = async () => {
-  error.value = null
+const handleJoinRoom = async () => {
+  const code = inputRoomCode.value.trim().toUpperCase()
+  if (!code) return
+
   isLoading.value = true
+  errorMessage.value = ''
+  updateProfile()
+
   try {
-    await ensureAuth()
-    const res = await $fetch<any>(`${config.public.apiUrl}/api/rooms`, {
+    const apiBase = config.public.apiUrl || 'http://localhost:8080'
+    const res: any = await $fetch(`${apiBase}/api/rooms/${code}/join`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${authStore.token}` },
-      body: { settings: newRoomSettings },
+      body: {
+        nickname: profileStore.nickname,
+        mascot: profileStore.mascot,
+        color: profileStore.color,
+      },
     })
 
-    router.push(`/lobby/${res.code}`)
+    if (res?.room?.code && res?.session_token) {
+      profileStore.setSession(res.session_token, res.room.code)
+      router.push(`/room/${res.room.code}`)
+    }
   } catch (err: any) {
-    error.value = err.data?.error || 'Erreur lors de la création de la salle'
+    errorMessage.value = err?.data?.error || 'Salle introuvable ou fermée'
   } finally {
     isLoading.value = false
   }

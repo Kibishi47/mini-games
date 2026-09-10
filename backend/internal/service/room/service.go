@@ -3,6 +3,7 @@ package room
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,21 +13,16 @@ import (
 	"github.com/google/uuid"
 
 	"minigames-backend/internal/domain"
-	"minigames-backend/internal/repository/postgres"
 	"minigames-backend/internal/repository/redis"
 )
 
 type RoomService struct {
-	roomRepo    *redis.RoomRepository
-	sessionRepo *postgres.RoomSessionRepository
-	userRepo    *postgres.UserRepository
+	roomRepo *redis.RoomRepository
 }
 
-func NewRoomService(roomRepo *redis.RoomRepository, sessionRepo *postgres.RoomSessionRepository, userRepo *postgres.UserRepository) *RoomService {
+func NewRoomService(roomRepo *redis.RoomRepository) *RoomService {
 	return &RoomService{
-		roomRepo:    roomRepo,
-		sessionRepo: sessionRepo,
-		userRepo:    userRepo,
+		roomRepo: roomRepo,
 	}
 }
 
@@ -50,16 +46,30 @@ func (s *RoomService) GenerateRoomCode() string {
 	return fmt.Sprintf("%s-%s", string(b), string(d))
 }
 
-// CreateRoom instancie une nouvelle salle avec le créateur en Master
-func (s *RoomService) CreateRoom(ctx context.Context, masterID uuid.UUID, settings *domain.RoomSettings) (*domain.Room, error) {
-	master, err := s.userRepo.GetByID(ctx, masterID)
-	if err != nil {
-		return nil, errors.New("utilisateur introuvable")
+// GenerateSessionToken crée un token sécurisé aléatoire de 32 caractères pour reconnexion
+func (s *RoomService) GenerateSessionToken() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// CreateRoom instancie une nouvelle salle avec l'invité créateur en Master
+func (s *RoomService) CreateRoom(ctx context.Context, nickname, mascot, color string, settings *domain.RoomSettings) (*domain.Room, string, error) {
+	nickname = strings.TrimSpace(nickname)
+	if nickname == "" {
+		nickname = "Joueur"
+	}
+	if mascot == "" {
+		mascot = "dice"
+	}
+	if color == "" {
+		color = "#FFD300"
 	}
 
 	code := s.GenerateRoomCode()
+	masterID := uuid.New()
 
-	defaultSettings := domain.RoomSettings{
+	st := domain.RoomSettings{
 		GameType:      "wordle",
 		WordLength:    5,
 		RoundDuration: 60,
@@ -68,122 +78,135 @@ func (s *RoomService) CreateRoom(ctx context.Context, masterID uuid.UUID, settin
 		Language:      "fr",
 	}
 	if settings != nil {
-		if settings.GameType != "" {
-			defaultSettings.GameType = settings.GameType
+		if settings.WordLength >= 3 && settings.WordLength <= 8 {
+			st.WordLength = settings.WordLength
 		}
-		if settings.WordLength >= 4 && settings.WordLength <= 8 {
-			defaultSettings.WordLength = settings.WordLength
-		}
-		if settings.RoundDuration >= 30 && settings.RoundDuration <= 300 {
-			defaultSettings.RoundDuration = settings.RoundDuration
+		if settings.RoundDuration >= 30 && settings.RoundDuration <= 180 {
+			st.RoundDuration = settings.RoundDuration
 		}
 		if settings.MaxRounds >= 1 && settings.MaxRounds <= 10 {
-			defaultSettings.MaxRounds = settings.MaxRounds
+			st.MaxRounds = settings.MaxRounds
 		}
-		if settings.Language != "" {
-			defaultSettings.Language = settings.Language
+		if settings.MaxAttempts >= 4 && settings.MaxAttempts <= 8 {
+			st.MaxAttempts = settings.MaxAttempts
 		}
-	}
-
-	now := time.Now()
-	masterPlayer := domain.RoomPlayer{
-		UserID:          master.ID,
-		Username:        master.Username,
-		DisplayUsername: master.DisplayUsername,
-		AvatarURL:       master.AvatarURL,
-		Role:            domain.RoleMaster,
-		IsMuted:         false,
-		IsConnected:     false, // deviendra true à la connexion WS
-		JoinedAt:        now,
-		LastSeenAt:      now,
-		Score:           0,
 	}
 
 	room := &domain.Room{
 		Code:         code,
 		Status:       domain.RoomStatusInLobby,
-		MasterID:     master.ID,
-		Settings:     defaultSettings,
-		CurrentRound: 1,
-		CreatedAt:    now,
-		Players:      []domain.RoomPlayer{masterPlayer},
+		MasterID:     masterID,
+		Settings:     st,
+		CurrentRound: 0,
+		CreatedAt:    time.Now(),
+		Players:      make([]domain.RoomPlayer, 0),
 	}
 
-	// Sauvegarde Redis
 	if err := s.roomRepo.CreateRoom(ctx, room); err != nil {
-		return nil, err
-	}
-	if err := s.roomRepo.AddPlayer(ctx, code, &masterPlayer); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	// Persistance PostgreSQL
-	_, _ = s.sessionRepo.CreateSession(ctx, code, master.ID)
+	// Ajouter le créateur comme Master
+	masterPlayer := &domain.RoomPlayer{
+		ID:          masterID,
+		Nickname:    nickname,
+		Mascot:      mascot,
+		Color:       color,
+		Role:        domain.RoleMaster,
+		IsMaster:    true,
+		IsSpectator: false,
+		IsMuted:     false,
+		IsConnected: true,
+		JoinedAt:    time.Now(),
+		LastSeenAt:  time.Now(),
+		Score:       0,
+	}
 
-	return room, nil
+	if err := s.roomRepo.AddPlayer(ctx, code, masterPlayer); err != nil {
+		return nil, "", err
+	}
+
+	// Créer le token de session éphémère (TTL 45s)
+	token := s.GenerateSessionToken()
+	_ = s.roomRepo.CreateSession(ctx, token, &domain.SessionData{
+		UserID:   masterID,
+		RoomCode: code,
+		Nickname: nickname,
+		Mascot:   mascot,
+		Color:    color,
+	})
+
+	room.Players = []domain.RoomPlayer{*masterPlayer}
+	return room, token, nil
 }
 
-// JoinRoom prépare l'accès d'un utilisateur à une room
-func (s *RoomService) JoinRoom(ctx context.Context, code string, userID uuid.UUID) (*domain.RoomPlayer, *domain.Room, error) {
+// JoinRoom fait rejoindre un joueur invité
+func (s *RoomService) JoinRoom(ctx context.Context, code, nickname, mascot, color string) (*domain.RoomPlayer, *domain.Room, string, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
-
-	// Vérifier si banni
-	if s.roomRepo.IsBanned(ctx, code, userID) {
-		return nil, nil, errors.New("vous êtes banni de cette salle")
-	}
-
 	room, err := s.roomRepo.GetRoom(ctx, code)
 	if err != nil {
-		return nil, nil, errors.New("salle introuvable")
+		return nil, nil, "", errors.New("salle introuvable ou fermée")
 	}
 
 	if room.Status == domain.RoomStatusClosed {
-		return nil, nil, errors.New("cette salle est fermée")
+		return nil, nil, "", errors.New("cette salle est fermée")
 	}
 
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return nil, nil, errors.New("utilisateur introuvable")
+	nickname = strings.TrimSpace(nickname)
+	if nickname == "" {
+		nickname = "Joueur"
+	}
+	if mascot == "" {
+		mascot = "domino"
+	}
+	if color == "" {
+		color = "#1D4ED8"
 	}
 
-	// Vérifier si le joueur est déjà présent (reconnexion)
-	existingPlayer, _ := s.roomRepo.GetPlayer(ctx, code, userID)
-	if existingPlayer != nil {
-		// Le joueur existant garde son rôle et son score
-		existingPlayer.IsConnected = true
-		existingPlayer.LastSeenAt = time.Now()
-		_ = s.roomRepo.AddPlayer(ctx, code, existingPlayer)
-		return existingPlayer, room, nil
-	}
+	userID := uuid.New()
 
-	// Nouveau joueur
+	// Si la partie est déjà en cours, le nouvel arrivant est spectateur automatique
+	isSpectator := room.Status == domain.RoomStatusInGame
 	role := domain.RolePlayer
-	// Si la partie est déjà en cours, entre en SPECTATEUR automatique
-	if room.Status == domain.RoomStatusInGame {
+	if isSpectator {
 		role = domain.RoleSpectator
 	}
 
-	now := time.Now()
-	newPlayer := &domain.RoomPlayer{
-		UserID:          user.ID,
-		Username:        user.Username,
-		DisplayUsername: user.DisplayUsername,
-		AvatarURL:       user.AvatarURL,
-		Role:            role,
-		IsMuted:         false,
-		IsConnected:     true,
-		JoinedAt:        now,
-		LastSeenAt:      now,
-		Score:           0,
+	player := &domain.RoomPlayer{
+		ID:          userID,
+		Nickname:    nickname,
+		Mascot:      mascot,
+		Color:       color,
+		Role:        role,
+		IsMaster:    false,
+		IsSpectator: isSpectator,
+		IsMuted:     false,
+		IsConnected: true,
+		JoinedAt:    time.Now(),
+		LastSeenAt:  time.Now(),
+		Score:       0,
 	}
 
-	if err := s.roomRepo.AddPlayer(ctx, code, newPlayer); err != nil {
-		return nil, nil, err
+	if err := s.roomRepo.AddPlayer(ctx, code, player); err != nil {
+		return nil, nil, "", err
 	}
 
-	return newPlayer, room, nil
+	// Créer le session token
+	token := s.GenerateSessionToken()
+	_ = s.roomRepo.CreateSession(ctx, token, &domain.SessionData{
+		UserID:   userID,
+		RoomCode: code,
+		Nickname: nickname,
+		Mascot:   mascot,
+		Color:    color,
+	})
+
+	updatedRoom, _ := s.roomRepo.GetRoom(ctx, code)
+	return player, updatedRoom, token, nil
 }
 
+// GetRoom récupère les données d'une salle
 func (s *RoomService) GetRoom(ctx context.Context, code string) (*domain.Room, error) {
-	return s.roomRepo.GetRoom(ctx, strings.ToUpper(strings.TrimSpace(code)))
+	code = strings.ToUpper(strings.TrimSpace(code))
+	return s.roomRepo.GetRoom(ctx, code)
 }

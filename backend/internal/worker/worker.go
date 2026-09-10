@@ -2,27 +2,23 @@ package worker
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
 	"minigames-backend/internal/domain"
-	"minigames-backend/internal/repository/postgres"
 	"minigames-backend/internal/repository/redis"
 	"minigames-backend/internal/transport/ws"
 )
 
 type WorkerManager struct {
-	roomRepo    *redis.RoomRepository
-	sessionRepo *postgres.RoomSessionRepository
-	hub         *ws.Hub
+	roomRepo *redis.RoomRepository
+	hub      *ws.Hub
 }
 
-func NewWorkerManager(roomRepo *redis.RoomRepository, sessionRepo *postgres.RoomSessionRepository, hub *ws.Hub) *WorkerManager {
+func NewWorkerManager(roomRepo *redis.RoomRepository, hub *ws.Hub) *WorkerManager {
 	return &WorkerManager{
-		roomRepo:    roomRepo,
-		sessionRepo: sessionRepo,
-		hub:         hub,
+		roomRepo: roomRepo,
+		hub:      hub,
 	}
 }
 
@@ -64,27 +60,19 @@ func (w *WorkerManager) checkAFKPlayers(ctx context.Context) {
 		}
 
 		for _, p := range players {
-			// Si le joueur est déconnecté depuis plus de 45s
+			// Si marqué déconnecté depuis plus de 45s
 			if !p.IsConnected && now.Sub(p.LastSeenAt) > gracePeriod {
-				log.Printf("⚠️ [AFK] Joueur %s (%s) expulsé après 45s de déconnexion de la room %s\n", p.DisplayUsername, p.UserID, code)
-
-				isMaster := p.Role == domain.RoleMaster
-				_ = w.roomRepo.RemovePlayer(ctx, code, p.UserID)
-
-				w.hub.BroadcastSystemMessage(code, fmt.Sprintf("%s a été retiré de la salle (délai de reconnexion dépassé)", p.DisplayUsername))
-
-				if isMaster {
-					w.hub.PromoteNextMaster(ctx, code)
-				}
+				_ = w.roomRepo.RemovePlayer(ctx, code, p.ID)
+				w.hub.HandleMasterSuccession(code, p.ID)
 				w.hub.SyncRoom(code)
 			}
 		}
 	}
 }
 
-// runRoomGarbageCollector nettoie les rooms inactives (>30min en lobby ou vides depuis >2min)
+// runRoomGarbageCollector purge les rooms vides depuis plus de 2min ou les lobbies abandonnés depuis plus de 30min
 func (w *WorkerManager) runRoomGarbageCollector(ctx context.Context) {
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -111,39 +99,27 @@ func (w *WorkerManager) cleanInactiveRooms(ctx context.Context) {
 			continue
 		}
 
-		shouldClose := false
-		reason := ""
-
-		// Condition 1 : Aucun joueur dans la salle
-		if len(room.Players) == 0 {
-			shouldClose = true
-			reason = "salle vide"
-		} else {
-			// Vérifier si aucun joueur n'est connecté depuis plus de 2 minutes
-			allDisconnectedFor2Min := true
-			for _, p := range room.Players {
-				if p.IsConnected || now.Sub(p.LastSeenAt) < 2*time.Minute {
-					allDisconnectedFor2Min = false
-					break
-				}
-			}
-			if allDisconnectedFor2Min {
-				shouldClose = true
-				reason = "tous les joueurs sont déconnectés depuis >2min"
+		players, _ := w.roomRepo.GetPlayers(ctx, code)
+		connectedCount := 0
+		for _, p := range players {
+			if p.IsConnected {
+				connectedCount++
 			}
 		}
 
-		// Condition 2 : Bloqué en lobby depuis > 30 minutes
+		// 1. Room totalement vide depuis plus de 2 minutes
+		if len(players) == 0 || connectedCount == 0 {
+			if now.Sub(room.CreatedAt) > 2*time.Minute {
+				_ = w.roomRepo.CloseRoom(ctx, code)
+				log.Printf("🧹 [GC] Salle vide %s fermée", code)
+				continue
+			}
+		}
+
+		// 2. Lobby inactif abandonné depuis plus de 30 minutes
 		if room.Status == domain.RoomStatusInLobby && now.Sub(room.CreatedAt) > 30*time.Minute {
-			shouldClose = true
-			reason = "lobby inactif depuis >30min"
-		}
-
-		if shouldClose {
-			log.Printf("🧹 [GC] Fermeture et purge de la salle %s (%s)\n", code, reason)
-			_ = w.roomRepo.UpdateRoomStatus(ctx, code, domain.RoomStatusClosed)
-			_ = w.sessionRepo.UpdateStatus(ctx, code, domain.RoomStatusClosed)
-			_ = w.roomRepo.CloseAndPurgeRoom(ctx, code)
+			_ = w.roomRepo.CloseRoom(ctx, code)
+			log.Printf("🧹 [GC] Lobby abandonné %s fermé", code)
 		}
 	}
 }

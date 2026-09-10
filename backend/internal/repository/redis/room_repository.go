@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,10 @@ import (
 )
 
 var (
-	ErrRoomNotFound = errors.New("salle introuvable ou fermée")
+	ErrRoomNotFound   = errors.New("salle introuvable ou fermée")
+	ErrPlayerNotFound = errors.New("joueur introuvable dans la salle")
+	ErrSessionNotFound = errors.New("session introuvable ou expirée")
+	ErrPlayerBanned   = errors.New("vous avez été banni de cette salle")
 )
 
 type RoomRepository struct {
@@ -26,6 +30,7 @@ func NewRoomRepository(client *redis.Client) *RoomRepository {
 	return &RoomRepository{client: client}
 }
 
+// Helpers pour les clés Redis
 func (r *RoomRepository) metaKey(code string) string {
 	return fmt.Sprintf("room:%s:meta", code)
 }
@@ -34,15 +39,62 @@ func (r *RoomRepository) playersKey(code string) string {
 	return fmt.Sprintf("room:%s:players", code)
 }
 
+func (r *RoomRepository) scoresKey(code string) string {
+	return fmt.Sprintf("room:%s:scores", code)
+}
+
+func (r *RoomRepository) historyKey(code string) string {
+	return fmt.Sprintf("room:%s:history", code)
+}
+
 func (r *RoomRepository) chatKey(code string) string {
 	return fmt.Sprintf("room:%s:chat", code)
+}
+
+func (r *RoomRepository) bansKey(code string) string {
+	return fmt.Sprintf("room:%s:bans", code)
 }
 
 func (r *RoomRepository) sessionKey(token string) string {
 	return fmt.Sprintf("session:%s", token)
 }
 
-// CreateRoom initialise une room dans Redis
+// -----------------------------------------------------------------------------
+// SESSIONS ÉPHÉMÈRES (TTL 45s pour reconnexion transparente)
+// -----------------------------------------------------------------------------
+
+func (r *RoomRepository) CreateSession(ctx context.Context, token string, data *domain.SessionData) error {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return r.client.Set(ctx, r.sessionKey(token), bytes, 45*time.Second).Err()
+}
+
+func (r *RoomRepository) GetSession(ctx context.Context, token string) (*domain.SessionData, error) {
+	bytes, err := r.client.Get(ctx, r.sessionKey(token)).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrSessionNotFound
+		}
+		return nil, err
+	}
+
+	var data domain.SessionData
+	if err := json.Unmarshal(bytes, &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func (r *RoomRepository) RefreshSession(ctx context.Context, token string) error {
+	return r.client.Expire(ctx, r.sessionKey(token), 45*time.Second).Err()
+}
+
+// -----------------------------------------------------------------------------
+// SALLES (Création, Lecture, Mise à jour, Fermeture)
+// -----------------------------------------------------------------------------
+
 func (r *RoomRepository) CreateRoom(ctx context.Context, room *domain.Room) error {
 	settingsJSON, err := json.Marshal(room.Settings)
 	if err != nil {
@@ -58,13 +110,12 @@ func (r *RoomRepository) CreateRoom(ctx context.Context, room *domain.Room) erro
 		"master_id":     room.MasterID.String(),
 		"settings":      string(settingsJSON),
 		"current_round": room.CurrentRound,
+		"secret_word":   room.SecretWord,
 		"created_at":    room.CreatedAt.Format(time.RFC3339),
 	}
 
 	pipe.HSet(ctx, metaKey, metaValues)
-	pipe.Expire(ctx, metaKey, 2*time.Hour)
-
-	// Ajouter au set global des rooms actives
+	pipe.Expire(ctx, metaKey, 4*time.Hour)
 	pipe.SAdd(ctx, "rooms:active", room.Code)
 
 	_, err = pipe.Exec(ctx)
@@ -73,46 +124,39 @@ func (r *RoomRepository) CreateRoom(ctx context.Context, room *domain.Room) erro
 
 func (r *RoomRepository) GetRoom(ctx context.Context, code string) (*domain.Room, error) {
 	metaKey := r.metaKey(code)
-	exists, err := r.client.Exists(ctx, metaKey).Result()
+	data, err := r.client.HGetAll(ctx, metaKey).Result()
 	if err != nil {
 		return nil, err
 	}
-	if exists == 0 {
+	if len(data) == 0 {
 		return nil, ErrRoomNotFound
 	}
 
-	meta, err := r.client.HGetAll(ctx, metaKey).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	masterID, _ := uuid.Parse(meta["master_id"])
-	createdAt, _ := time.Parse(time.RFC3339, meta["created_at"])
+	masterID, _ := uuid.Parse(data["master_id"])
+	currentRound, _ := strconv.Atoi(data["current_round"])
+	createdAt, _ := time.Parse(time.RFC3339, data["created_at"])
 
 	var settings domain.RoomSettings
-	_ = json.Unmarshal([]byte(meta["settings"]), &settings)
+	if sJSON, ok := data["settings"]; ok {
+		_ = json.Unmarshal([]byte(sJSON), &settings)
+	}
 
 	var endsAt *time.Time
-	if endsAtStr, ok := meta["ends_at"]; ok && endsAtStr != "" {
-		t, err := time.Parse(time.RFC3339, endsAtStr)
-		if err == nil {
+	if eaStr, ok := data["ends_at"]; ok && eaStr != "" {
+		if t, err := time.Parse(time.RFC3339, eaStr); err == nil {
 			endsAt = &t
 		}
 	}
 
 	players, _ := r.GetPlayers(ctx, code)
 
-	currentRound := 1
-	if cr, ok := meta["current_round"]; ok {
-		fmt.Sscanf(cr, "%d", &currentRound)
-	}
-
 	return &domain.Room{
 		Code:         code,
-		Status:       domain.RoomStatus(meta["status"]),
+		Status:       domain.RoomStatus(data["status"]),
 		MasterID:     masterID,
 		Settings:     settings,
 		CurrentRound: currentRound,
+		SecretWord:   data["secret_word"],
 		EndsAt:       endsAt,
 		CreatedAt:    createdAt,
 		Players:      players,
@@ -124,66 +168,107 @@ func (r *RoomRepository) UpdateRoomStatus(ctx context.Context, code string, stat
 }
 
 func (r *RoomRepository) UpdateRoomSettings(ctx context.Context, code string, settings domain.RoomSettings) error {
-	data, err := json.Marshal(settings)
+	b, err := json.Marshal(settings)
 	if err != nil {
 		return err
 	}
-	return r.client.HSet(ctx, r.metaKey(code), "settings", string(data)).Err()
+	return r.client.HSet(ctx, r.metaKey(code), "settings", string(b)).Err()
+}
+
+func (r *RoomRepository) UpdateRoomMaster(ctx context.Context, code string, newMasterID uuid.UUID) error {
+	pipe := r.client.Pipeline()
+	pipe.HSet(ctx, r.metaKey(code), "master_id", newMasterID.String())
+
+	// Mettre à jour l'ancien et le nouveau master dans le hash players
+	players, err := r.GetPlayers(ctx, code)
+	if err == nil {
+		for _, p := range players {
+			if p.ID == newMasterID {
+				p.Role = domain.RoleMaster
+				p.IsMaster = true
+				b, _ := json.Marshal(p)
+				pipe.HSet(ctx, r.playersKey(code), p.ID.String(), string(b))
+			} else if p.IsMaster {
+				p.Role = domain.RolePlayer
+				p.IsMaster = false
+				b, _ := json.Marshal(p)
+				pipe.HSet(ctx, r.playersKey(code), p.ID.String(), string(b))
+			}
+		}
+	}
+
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (r *RoomRepository) SetSecretWord(ctx context.Context, code string, secretWord string) error {
+	return r.client.HSet(ctx, r.metaKey(code), "secret_word", secretWord).Err()
 }
 
 func (r *RoomRepository) UpdateRound(ctx context.Context, code string, round int, endsAt *time.Time) error {
-	pipe := r.client.Pipeline()
-	metaKey := r.metaKey(code)
-	pipe.HSet(ctx, metaKey, "current_round", round)
+	vals := map[string]interface{}{
+		"current_round": round,
+	}
 	if endsAt != nil {
-		pipe.HSet(ctx, metaKey, "ends_at", endsAt.Format(time.RFC3339))
+		vals["ends_at"] = endsAt.Format(time.RFC3339)
 	} else {
-		pipe.HDel(ctx, metaKey, "ends_at")
+		vals["ends_at"] = ""
 	}
-	_, err := pipe.Exec(ctx)
-	return err
+	return r.client.HSet(ctx, r.metaKey(code), vals).Err()
 }
 
-func (r *RoomRepository) SetMaster(ctx context.Context, code string, masterID uuid.UUID) error {
+func (r *RoomRepository) CloseRoom(ctx context.Context, code string) error {
 	pipe := r.client.Pipeline()
-	pipe.HSet(ctx, r.metaKey(code), "master_id", masterID.String())
-
-	// Mettre à jour le rôle dans le hash des joueurs
-	players, _ := r.GetPlayers(ctx, code)
-	for _, p := range players {
-		if p.UserID == masterID {
-			p.Role = domain.RoleMaster
-		} else if p.Role == domain.RoleMaster {
-			p.Role = domain.RolePlayer
-		}
-		data, _ := json.Marshal(p)
-		pipe.HSet(ctx, r.playersKey(code), p.UserID.String(), string(data))
-	}
-
+	pipe.HSet(ctx, r.metaKey(code), "status", string(domain.RoomStatusClosed))
+	pipe.SRem(ctx, "rooms:active", code)
+	pipe.Expire(ctx, r.metaKey(code), 5*time.Minute)
+	pipe.Expire(ctx, r.playersKey(code), 5*time.Minute)
+	pipe.Expire(ctx, r.scoresKey(code), 5*time.Minute)
+	pipe.Expire(ctx, r.historyKey(code), 5*time.Minute)
+	pipe.Expire(ctx, r.chatKey(code), 5*time.Minute)
+	pipe.Expire(ctx, r.bansKey(code), 5*time.Minute)
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
-// Players
+func (r *RoomRepository) GetActiveRoomCodes(ctx context.Context) ([]string, error) {
+	return r.client.SMembers(ctx, "rooms:active").Result()
+}
+
+// -----------------------------------------------------------------------------
+// JOUEURS & PRÉSENCE
+// -----------------------------------------------------------------------------
+
 func (r *RoomRepository) AddPlayer(ctx context.Context, code string, player *domain.RoomPlayer) error {
+	// Vérifier si banni
+	isBanned, err := r.client.SIsMember(ctx, r.bansKey(code), player.ID.String()).Result()
+	if err == nil && isBanned {
+		return ErrPlayerBanned
+	}
+
 	data, err := json.Marshal(player)
 	if err != nil {
 		return err
 	}
+
 	pipe := r.client.Pipeline()
-	pipe.HSet(ctx, r.playersKey(code), player.UserID.String(), string(data))
-	pipe.Expire(ctx, r.playersKey(code), 2*time.Hour)
+	pipe.HSet(ctx, r.playersKey(code), player.ID.String(), string(data))
+	pipe.Expire(ctx, r.playersKey(code), 4*time.Hour)
 	_, err = pipe.Exec(ctx)
 	return err
 }
 
 func (r *RoomRepository) GetPlayer(ctx context.Context, code string, userID uuid.UUID) (*domain.RoomPlayer, error) {
-	data, err := r.client.HGet(ctx, r.playersKey(code), userID.String()).Result()
+	val, err := r.client.HGet(ctx, r.playersKey(code), userID.String()).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrPlayerNotFound
+		}
 		return nil, err
 	}
+
 	var p domain.RoomPlayer
-	if err := json.Unmarshal([]byte(data), &p); err != nil {
+	if err := json.Unmarshal([]byte(val), &p); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -195,15 +280,15 @@ func (r *RoomRepository) GetPlayers(ctx context.Context, code string) ([]domain.
 		return nil, err
 	}
 
-	var players []domain.RoomPlayer
-	for _, pStr := range data {
+	players := make([]domain.RoomPlayer, 0, len(data))
+	for _, val := range data {
 		var p domain.RoomPlayer
-		if err := json.Unmarshal([]byte(pStr), &p); err == nil {
+		if err := json.Unmarshal([]byte(val), &p); err == nil {
 			players = append(players, p)
 		}
 	}
 
-	// Trier par ordre de connexion / joined_at
+	// Tri par date d'arrivée pour préserver l'ordre d'ancienneté (passation Master)
 	sort.Slice(players, func(i, j int) bool {
 		return players[i].JoinedAt.Before(players[j].JoinedAt)
 	})
@@ -215,110 +300,173 @@ func (r *RoomRepository) RemovePlayer(ctx context.Context, code string, userID u
 	return r.client.HDel(ctx, r.playersKey(code), userID.String()).Err()
 }
 
-func (r *RoomRepository) UpdatePlayerActivity(ctx context.Context, code string, userID uuid.UUID, connected bool) error {
+func (r *RoomRepository) UpdatePlayerActivity(ctx context.Context, code string, userID uuid.UUID, isConnected bool) error {
 	p, err := r.GetPlayer(ctx, code, userID)
 	if err != nil {
 		return err
 	}
-	p.IsConnected = connected
+
+	p.IsConnected = isConnected
 	p.LastSeenAt = time.Now()
-	return r.AddPlayer(ctx, code, p)
+
+	data, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+
+	return r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data)).Err()
 }
 
-func (r *RoomRepository) UpdatePlayerMute(ctx context.Context, code string, userID uuid.UUID, muted bool) error {
+func (r *RoomRepository) SetPlayerMuted(ctx context.Context, code string, userID uuid.UUID, muted bool) error {
 	p, err := r.GetPlayer(ctx, code, userID)
 	if err != nil {
 		return err
 	}
+
 	p.IsMuted = muted
-	return r.AddPlayer(ctx, code, p)
+	data, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+
+	return r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data)).Err()
 }
 
-func (r *RoomRepository) UpdatePlayerScore(ctx context.Context, code string, userID uuid.UUID, scoreDelta int) error {
+func (r *RoomRepository) SetPlayerSpectator(ctx context.Context, code string, userID uuid.UUID, isSpectator bool) error {
 	p, err := r.GetPlayer(ctx, code, userID)
 	if err != nil {
 		return err
 	}
-	p.Score += scoreDelta
-	return r.AddPlayer(ctx, code, p)
+
+	p.IsSpectator = isSpectator
+	if isSpectator {
+		p.Role = domain.RoleSpectator
+	} else if p.IsMaster {
+		p.Role = domain.RoleMaster
+	} else {
+		p.Role = domain.RolePlayer
+	}
+
+	data, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+
+	return r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data)).Err()
 }
 
-// Chat Buffer (50 messages max)
+func (r *RoomRepository) BanPlayer(ctx context.Context, code string, userID uuid.UUID) error {
+	pipe := r.client.Pipeline()
+	pipe.SAdd(ctx, r.bansKey(code), userID.String())
+	pipe.HDel(ctx, r.playersKey(code), userID.String())
+	pipe.Expire(ctx, r.bansKey(code), 4*time.Hour)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (r *RoomRepository) IsPlayerBanned(ctx context.Context, code string, userID uuid.UUID) (bool, error) {
+	return r.client.SIsMember(ctx, r.bansKey(code), userID.String()).Result()
+}
+
+// -----------------------------------------------------------------------------
+// SCOREBOARD DE SESSION (ZSet / Hash)
+// -----------------------------------------------------------------------------
+
+func (r *RoomRepository) AddScore(ctx context.Context, code string, userID uuid.UUID, points int) (int, error) {
+	newScore, err := r.client.ZIncrBy(ctx, r.scoresKey(code), float64(points), userID.String()).Result()
+	if err != nil {
+		return 0, err
+	}
+	r.client.Expire(ctx, r.scoresKey(code), 4*time.Hour)
+
+	// Synchroniser dans l'objet joueur
+	if p, err := r.GetPlayer(ctx, code, userID); err == nil {
+		p.Score = int(newScore)
+		if data, err := json.Marshal(p); err == nil {
+			_ = r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data))
+		}
+	}
+
+	return int(newScore), nil
+}
+
+func (r *RoomRepository) GetScores(ctx context.Context, code string) (map[string]int, error) {
+	scores, err := r.client.ZRevRangeWithScores(ctx, r.scoresKey(code), 0, -1).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]int, len(scores))
+	for _, z := range scores {
+		res[fmt.Sprint(z.Member)] = int(z.Score)
+	}
+	return res, nil
+}
+
+// -----------------------------------------------------------------------------
+// HISTORIQUE DES MANCHES
+// -----------------------------------------------------------------------------
+
+func (r *RoomRepository) AddRoundHistory(ctx context.Context, code string, history *domain.RoundHistory) error {
+	bytes, err := json.Marshal(history)
+	if err != nil {
+		return err
+	}
+
+	pipe := r.client.Pipeline()
+	pipe.RPush(ctx, r.historyKey(code), bytes)
+	pipe.Expire(ctx, r.historyKey(code), 4*time.Hour)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (r *RoomRepository) GetRoundHistory(ctx context.Context, code string) ([]domain.RoundHistory, error) {
+	items, err := r.client.LRange(ctx, r.historyKey(code), 0, -1).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	history := make([]domain.RoundHistory, 0, len(items))
+	for _, item := range items {
+		var h domain.RoundHistory
+		if err := json.Unmarshal([]byte(item), &h); err == nil {
+			history = append(history, h)
+		}
+	}
+	return history, nil
+}
+
+// -----------------------------------------------------------------------------
+// CHAT CIRCULAIRE (50 derniers messages)
+// -----------------------------------------------------------------------------
+
 func (r *RoomRepository) AddChatMessage(ctx context.Context, code string, msg *domain.ChatMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
-	key := r.chatKey(code)
+
 	pipe := r.client.Pipeline()
-	pipe.LPush(ctx, key, string(data))
-	pipe.LTrim(ctx, key, 0, 49) // Garder les 50 derniers
-	pipe.Expire(ctx, key, 2*time.Hour)
+	chatKey := r.chatKey(code)
+	pipe.RPush(ctx, chatKey, string(data))
+	pipe.LTrim(ctx, chatKey, -50, -1) // Ne garder que les 50 plus récents
+	pipe.Expire(ctx, chatKey, 4*time.Hour)
 	_, err = pipe.Exec(ctx)
 	return err
 }
 
-func (r *RoomRepository) GetRecentChat(ctx context.Context, code string) ([]domain.ChatMessage, error) {
-	key := r.chatKey(code)
-	items, err := r.client.LRange(ctx, key, 0, 49).Result()
+func (r *RoomRepository) GetRecentChatMessages(ctx context.Context, code string) ([]domain.ChatMessage, error) {
+	items, err := r.client.LRange(ctx, r.chatKey(code), 0, -1).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	var messages []domain.ChatMessage
+	messages := make([]domain.ChatMessage, 0, len(items))
 	for _, item := range items {
-		var m domain.ChatMessage
-		if err := json.Unmarshal([]byte(item), &m); err == nil {
-			messages = append(messages, m)
+		var msg domain.ChatMessage
+		if err := json.Unmarshal([]byte(item), &msg); err == nil {
+			messages = append(messages, msg)
 		}
 	}
-
-	// Inverser pour ordre chronologique (du plus ancien au plus récent)
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-
 	return messages, nil
-}
-
-// Banned & Muted sets
-func (r *RoomRepository) BanUser(ctx context.Context, code string, userID uuid.UUID, duration time.Duration) error {
-	key := fmt.Sprintf("room:%s:bans", code)
-	return r.client.Set(ctx, fmt.Sprintf("%s:%s", key, userID.String()), "1", duration).Err()
-}
-
-func (r *RoomRepository) IsBanned(ctx context.Context, code string, userID uuid.UUID) bool {
-	key := fmt.Sprintf("room:%s:bans:%s", code, userID.String())
-	exists, err := r.client.Exists(ctx, key).Result()
-	return err == nil && exists > 0
-}
-
-// Active rooms listing & cleanup
-func (r *RoomRepository) GetActiveRoomCodes(ctx context.Context) ([]string, error) {
-	return r.client.SMembers(ctx, "rooms:active").Result()
-}
-
-func (r *RoomRepository) CloseAndPurgeRoom(ctx context.Context, code string) error {
-	pipe := r.client.Pipeline()
-	pipe.SRem(ctx, "rooms:active", code)
-	pipe.Del(ctx, r.metaKey(code))
-	pipe.Del(ctx, r.playersKey(code))
-	pipe.Del(ctx, r.chatKey(code))
-	pipe.Del(ctx, fmt.Sprintf("room:%s:game_state", code))
-	pipe.Del(ctx, fmt.Sprintf("room:%s:wordle", code))
-	_, err := pipe.Exec(ctx)
-	return err
-}
-
-// Rate Limiting par token-bucket Redis
-func (r *RoomRepository) CheckRateLimit(ctx context.Context, key string, maxRequests int, window time.Duration) (bool, error) {
-	rateKey := fmt.Sprintf("ratelimit:%s", key)
-	count, err := r.client.Incr(ctx, rateKey).Result()
-	if err != nil {
-		return false, err
-	}
-	if count == 1 {
-		r.client.Expire(ctx, rateKey, window)
-	}
-	return count <= int64(maxRequests), nil
 }

@@ -13,22 +13,24 @@ import (
 )
 
 type Client struct {
-	hub      *Hub
-	conn     *websocket.Conn
-	roomCode string
-	userID   uuid.UUID
-	sendChan chan []byte
-	isClosed bool
-	mu       sync.Mutex
+	hub          *Hub
+	conn         *websocket.Conn
+	roomCode     string
+	userID       uuid.UUID
+	sessionToken string
+	sendChan     chan []byte
+	isClosed     bool
+	mu           sync.Mutex
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn, roomCode string, userID uuid.UUID) *Client {
+func NewClient(hub *Hub, conn *websocket.Conn, roomCode string, userID uuid.UUID, sessionToken string) *Client {
 	return &Client{
-		hub:      hub,
-		conn:     conn,
-		roomCode: roomCode,
-		userID:   userID,
-		sendChan: make(chan []byte, 64),
+		hub:          hub,
+		conn:         conn,
+		roomCode:     roomCode,
+		userID:       userID,
+		sessionToken: sessionToken,
+		sendChan:     make(chan []byte, 64),
 	}
 }
 
@@ -40,6 +42,10 @@ func (c *Client) UserID() uuid.UUID {
 	return c.userID
 }
 
+func (c *Client) SessionToken() string {
+	return c.sessionToken
+}
+
 func (c *Client) ReadPump(ctx context.Context) {
 	defer func() {
 		c.hub.Unregister(c)
@@ -49,7 +55,6 @@ func (c *Client) ReadPump(ctx context.Context) {
 	for {
 		typ, message, err := c.conn.Read(ctx)
 		if err != nil {
-			// Déconnexion ou fermeture
 			break
 		}
 		if typ != websocket.MessageText {
@@ -58,12 +63,10 @@ func (c *Client) ReadPump(ctx context.Context) {
 
 		var wsMsg domain.WSMessage
 		if err := json.Unmarshal(message, &wsMsg); err != nil {
-			c.SendError("Format de message invalide")
 			continue
 		}
 
-		// Dispatcher
-		c.hub.Dispatch(c, wsMsg)
+		c.hub.HandleMessage(c, wsMsg)
 	}
 }
 
@@ -80,46 +83,50 @@ func (c *Client) WritePump(ctx context.Context) {
 			return
 		case msg, ok := <-c.sendChan:
 			if !ok {
-				_ = c.conn.Close(websocket.StatusNormalClosure, "")
 				return
 			}
-			writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			writeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			err := c.conn.Write(writeCtx, websocket.MessageText, msg)
 			cancel()
 			if err != nil {
 				return
 			}
 		case <-ticker.C:
-			// Ping / Heartbeat
-			pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			err := c.conn.Ping(pingCtx)
+			// Ping régulier pour maintenir la connexion active
+			writeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			err := c.conn.Ping(writeCtx)
 			cancel()
 			if err != nil {
 				return
 			}
+			// Rafraîchir le heartbeat d'activité
+			c.hub.TouchPlayer(c)
 		}
 	}
 }
 
 func (c *Client) Send(msg domain.WSMessage) {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if c.isClosed {
 		return
 	}
+
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+
 	select {
-	case c.sendChan <- data:
+	case c.sendChan <- bytes:
 	default:
-		// Buffer plein
+		// Tampon saturé
 	}
 }
 
-func (c *Client) SendError(msg string) {
-	payload, _ := json.Marshal(map[string]string{"error": msg})
+func (c *Client) SendError(message string) {
+	payload, _ := json.Marshal(map[string]string{"error": message})
 	c.Send(domain.WSMessage{
 		Type:    "error",
 		Payload: payload,
@@ -129,8 +136,10 @@ func (c *Client) SendError(msg string) {
 func (c *Client) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if !c.isClosed {
 		c.isClosed = true
 		close(c.sendChan)
+		_ = c.conn.Close(websocket.StatusNormalClosure, "Fermeture normale")
 	}
 }

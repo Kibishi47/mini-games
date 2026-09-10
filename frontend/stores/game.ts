@@ -13,21 +13,22 @@ export interface MaskedTile {
 
 export interface OpponentProgress {
   user_id: string
-  display_username: string
+  nickname: string
+  mascot: string
+  color: string
   masked_rows: MaskedTile[][]
   is_solved: boolean
   is_finished: boolean
+  attempts_cnt: number
 }
 
-export interface PlayerSummary {
-  user_id: string
-  display_username: string
-  avatar_url: string
-  is_solved: boolean
-  attempts_count: number
-  score_delta: number
-  total_score: number
-  emoji_grid: string
+export interface RoundSummary {
+  round: number
+  secret_word: string
+  reason: string
+  winner_name: string
+  round_scores: Record<string, number>
+  total_scores: Record<string, number>
 }
 
 export const useGameStore = defineStore('game', {
@@ -38,60 +39,62 @@ export const useGameStore = defineStore('game', {
     maxAttempts: 6,
     endsAt: null as Date | null,
     roundDuration: 60,
-    
-    // Grille active du joueur
+
+    // Grille du joueur courant
     myAttempts: [] as TileEvaluation[][],
     currentInput: '',
-    
-    // Adversaires
+
+    // Concurrents
     opponents: [] as OpponentProgress[],
-    
-    // Statut personnel
+
+    // État personnel
     isSolved: false,
     isFinished: false,
-    myScore: 0,
+    myRoundScore: 0,
 
-    // Fin de manche
+    // Fin de manche / Fin de partie
     targetWord: '',
-    roundSummaries: [] as PlayerSummary[],
+    roundSummary: null as RoundSummary | null,
     isGameOver: false,
     showRoundSummary: false,
   }),
 
   getters: {
-    isSpectator: () => {
-      const room = useRoomStore()
-      return room.myRole === 'spectator'
-    },
-    
     keyboardStatus: (state) => {
-      const statusMap: Record<string, TileStatus> = {}
+      const map: Record<string, TileStatus> = {}
       for (const row of state.myAttempts) {
         for (const tile of row) {
-          const char = tile.letter.toUpperCase()
-          const current = statusMap[char]
+          const letter = tile.letter.toUpperCase()
+          const current = map[letter]
           if (tile.status === 'correct') {
-            statusMap[char] = 'correct'
+            map[letter] = 'correct'
           } else if (tile.status === 'present' && current !== 'correct') {
-            statusMap[char] = 'present'
+            map[letter] = 'present'
           } else if (tile.status === 'absent' && !current) {
-            statusMap[char] = 'absent'
+            map[letter] = 'absent'
           }
         }
       }
-      return statusMap
+      return map
+    },
+
+    emojiGrid: (state) => {
+      return state.myAttempts
+        .map(row =>
+          row
+            .map(tile => {
+              if (tile.status === 'correct') return '🟩'
+              if (tile.status === 'present') return '🟨'
+              return '⬛'
+            })
+            .join('')
+        )
+        .join('\n')
     },
   },
 
   actions: {
-    startNewRound(payload: {
-      round: number
-      max_rounds: number
-      word_length: number
-      max_attempts: number
-      ends_at: string
-      round_duration: number
-    }) {
+    startRound(payload: { round: number; max_rounds: number; word_length: number; max_attempts: number; ends_at: string; round_duration: number }) {
       this.currentRound = payload.round
       this.maxRounds = payload.max_rounds
       this.wordLength = payload.word_length
@@ -104,48 +107,56 @@ export const useGameStore = defineStore('game', {
       this.opponents = []
       this.isSolved = false
       this.isFinished = false
+      this.myRoundScore = 0
       this.targetWord = ''
-      this.roundSummaries = []
       this.showRoundSummary = false
+      this.isGameOver = false
     },
 
-    updateOpponentProgress(payload: {
-      user_id: string
-      row_index: number
-      masked_row: MaskedTile[]
-      is_solved: boolean
-      is_finished: boolean
-    }) {
-      const opp = this.opponents.find(o => o.user_id === payload.user_id)
-      if (opp) {
-        opp.masked_rows[payload.row_index] = payload.masked_row
-        opp.is_solved = payload.is_solved
-        opp.is_finished = payload.is_finished
+    setGuessResult(payload: { attempts: TileEvaluation[][]; is_solved: boolean; is_finished: boolean; round_score: number }) {
+      this.myAttempts = payload.attempts
+      this.isSolved = payload.is_solved
+      this.isFinished = payload.is_finished
+      this.myRoundScore = payload.round_score
+      this.currentInput = ''
+    },
+
+    updateOpponentProgress(payload: OpponentProgress) {
+      const idx = this.opponents.findIndex(o => o.user_id === payload.user_id)
+      if (idx !== -1) {
+        this.opponents[idx] = payload
       } else {
-        const room = useRoomStore()
-        const player = room.players.find(p => p.user_id === payload.user_id)
-        const newOpp: OpponentProgress = {
-          user_id: payload.user_id,
-          display_username: player?.display_username || 'Adversaire',
-          masked_rows: [payload.masked_row],
-          is_solved: payload.is_solved,
-          is_finished: payload.is_finished,
-        }
-        this.opponents.push(newOpp)
+        this.opponents.push(payload)
       }
     },
 
-    setRoundEnd(payload: {
-      target_word: string
-      round: number
-      max_rounds: number
-      summaries: PlayerSummary[]
-      is_game_over: boolean
-    }) {
-      this.targetWord = payload.target_word
-      this.roundSummaries = payload.summaries
-      this.isGameOver = payload.is_game_over
+    endRound(payload: RoundSummary) {
+      this.roundSummary = payload
+      this.targetWord = payload.secret_word
       this.showRoundSummary = true
+      this.isGameOver = payload.round >= this.maxRounds
+    },
+
+    syncGameState(payload: any) {
+      if (payload.word_length) this.wordLength = payload.word_length
+      if (payload.max_attempts) this.maxAttempts = payload.max_attempts
+      if (payload.ends_at) this.endsAt = new Date(payload.ends_at)
+      if (payload.attempts) this.myAttempts = payload.attempts
+      this.isSolved = !!payload.is_solved
+      this.isFinished = !!payload.is_finished
+      if (payload.opponents) this.opponents = payload.opponents
+    },
+
+    typeLetter(letter: string) {
+      if (this.isFinished) return
+      if (this.currentInput.length < this.wordLength) {
+        this.currentInput += letter.toUpperCase()
+      }
+    },
+
+    deleteLetter() {
+      if (this.isFinished) return
+      this.currentInput = this.currentInput.slice(0, -1)
     },
 
     resetGame() {
@@ -154,8 +165,7 @@ export const useGameStore = defineStore('game', {
       this.opponents = []
       this.isSolved = false
       this.isFinished = false
-      this.targetWord = ''
-      this.roundSummaries = []
+      this.roundSummary = null
       this.showRoundSummary = false
       this.isGameOver = false
     },

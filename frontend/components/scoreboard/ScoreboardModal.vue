@@ -22,8 +22,8 @@
       <!-- Piste de Score de Jeu de Société -->
       <div class="space-y-3 max-h-72 overflow-y-auto pr-1">
         <div
-          v-for="(summary, index) in sortedSummaries"
-          :key="summary.user_id"
+          v-for="(player, index) in scoreboardPlayers"
+          :key="player.id"
           :class="[
             'flex items-center justify-between p-3.5 rounded-2xl border-[3px] border-ink-black shadow-pop-xs transition-none',
             index === 0 ? 'bg-game-yellow/30' : 'bg-board-cream'
@@ -42,23 +42,26 @@
               #{{ index + 1 }}
             </span>
 
-            <GameMascot :name="getMascotName(index)" :mood="summary.is_solved ? 'happy' : 'idle'" size="md" />
+            <GameMascot :name="(player.mascot as any) || 'dice'" mood="happy" size="md" />
 
             <div>
-              <div class="font-display font-black text-sm uppercase text-ink-black">{{ summary.display_username }}</div>
+              <div class="font-display font-black text-sm uppercase text-ink-black">{{ player.nickname }}</div>
               <div class="font-condensed text-xs uppercase text-ink-black/70">
-                {{ summary.is_solved ? `Trouvé en ${summary.attempts_count} essais` : 'Non résolu' }}
+                <span v-if="gameStore.roundSummary?.round_scores?.[player.id]">
+                  +{{ gameStore.roundSummary.round_scores[player.id] }} pts cette manche
+                </span>
+                <span v-else>0 pt cette manche</span>
               </div>
             </div>
           </div>
 
-          <!-- Score Delta & Total sur la piste -->
+          <!-- Score Total sur la piste -->
           <div class="text-right">
-            <div class="text-game-green font-condensed font-black text-lg">
-              +{{ summary.score_delta }} pts
+            <div class="text-game-blue font-condensed font-black text-xl">
+              {{ player.score }} pts
             </div>
-            <div class="text-xs font-display font-bold uppercase text-ink-black/60">
-              Total : {{ summary.total_score }} pts
+            <div class="text-[10px] font-display font-bold uppercase text-ink-black/60">
+              Total session
             </div>
           </div>
         </div>
@@ -99,8 +102,8 @@
 import { computed, ref } from 'vue'
 import { Trophy, Share2, RotateCcw } from 'lucide-vue-next'
 import { useGameStore } from '~/stores/game'
-import { useAuthStore } from '~/stores/auth'
-import GameMascot, { type MascotName } from '~/components/ui/GameMascot.vue'
+import { useRoomStore } from '~/stores/room'
+import GameMascot from '~/components/ui/GameMascot.vue'
 import AppButton from '~/components/ui/AppButton.vue'
 
 defineProps<{
@@ -109,19 +112,15 @@ defineProps<{
 }>()
 
 const gameStore = useGameStore()
-const authStore = useAuthStore()
+const roomStore = useRoomStore()
 const copied = ref(false)
 
-const mascotPool: MascotName[] = ['dice', 'knight', 'card', 'domino', 'd20', 'meeple']
-const getMascotName = (idx: number): MascotName => mascotPool[idx % mascotPool.length]
-
-const sortedSummaries = computed(() => {
-  return [...gameStore.roundSummaries].sort((a, b) => b.total_score - a.total_score)
+const scoreboardPlayers = computed(() => {
+  return [...roomStore.players].sort((a, b) => b.score - a.score)
 })
 
 const copyEmojiGrid = async () => {
-  const mySummary = gameStore.roundSummaries.find(s => s.user_id === authStore.user?.id)
-  const grid = mySummary?.emoji_grid || '🟩🟨⬛'
+  const grid = gameStore.emojiGrid || '🟩🟨⬛'
   const text = `MiniGames Wordle Multijoueur\nManche ${gameStore.currentRound}/${gameStore.maxRounds}\n\n${grid}\nFestival du Jeu de Société !`
   
   try {
