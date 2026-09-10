@@ -382,6 +382,59 @@ func (r *RoomRepository) SetPlayerSpectator(ctx context.Context, code string, us
 	return r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data)).Err()
 }
 
+func (r *RoomRepository) SetPlayerLocation(ctx context.Context, code string, userID uuid.UUID, location string) error {
+	p, err := r.GetPlayer(ctx, code, userID)
+	if err != nil {
+		return err
+	}
+
+	p.Location = location
+	data, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+
+	return r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data)).Err()
+}
+
+func (r *RoomRepository) SetAllPlayersLocation(ctx context.Context, code string, location string) error {
+	players, err := r.GetPlayers(ctx, code)
+	if err != nil {
+		return err
+	}
+
+	pipe := r.client.Pipeline()
+	for _, p := range players {
+		p.Location = location
+		data, err := json.Marshal(p)
+		if err == nil {
+			pipe.HSet(ctx, r.playersKey(code), p.ID.String(), string(data))
+		}
+	}
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (r *RoomRepository) ResetScores(ctx context.Context, code string) error {
+	pipe := r.client.Pipeline()
+	pipe.Del(ctx, r.scoresKey(code), r.historyKey(code))
+
+	// Remettre à zéro le score de chaque joueur
+	players, err := r.GetPlayers(ctx, code)
+	if err == nil {
+		for _, p := range players {
+			p.Score = 0
+			data, err := json.Marshal(p)
+			if err == nil {
+				pipe.HSet(ctx, r.playersKey(code), p.ID.String(), string(data))
+			}
+		}
+	}
+
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
 func (r *RoomRepository) BanPlayer(ctx context.Context, code string, userID uuid.UUID) error {
 	pipe := r.client.Pipeline()
 	pipe.SAdd(ctx, r.bansKey(code), userID.String())

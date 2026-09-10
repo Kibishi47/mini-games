@@ -15,6 +15,7 @@ export interface RoomPlayer {
   is_muted: boolean
   is_connected: boolean
   score: number
+  location?: 'lobby' | 'in_game'
 }
 
 export interface RoomSettings {
@@ -96,6 +97,21 @@ export const useRoomStore = defineStore('room', {
     clearRoom() {
       this.currentRoom = null
       this.chatMessages = []
+    },
+
+    updatePlayerLocation(userId: string, location: 'lobby' | 'in_game') {
+      if (!this.currentRoom?.players) return
+      const player = this.currentRoom.players.find(p => p.id === userId)
+      if (player) {
+        player.location = location
+      }
+    },
+
+    resetPlayerScores() {
+      if (!this.currentRoom?.players) return
+      this.currentRoom.players.forEach(p => {
+        p.score = 0
+      })
     },
   },
 })
