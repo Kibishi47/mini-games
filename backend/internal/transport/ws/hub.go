@@ -87,7 +87,7 @@ func (h *Hub) Register(client *Client) {
 		}
 
 		if isReconnect {
-			// Annoncer la reconnexion sans dupliquer de message d'arrivée
+			// Reconnexion transparente : AUCUN message de chat pour ne pas spammer les autres
 			reconnectPayload, _ := json.Marshal(map[string]interface{}{
 				"user_id":  client.userID,
 				"nickname": nickname,
@@ -96,12 +96,11 @@ func (h *Hub) Register(client *Client) {
 				Type:    "player:reconnected",
 				Payload: reconnectPayload,
 			})
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s s'est reconnecté", nickname))
 		} else {
 			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a rejoint la salle", nickname))
 		}
 
-		// Envoi de l'historique du chat au nouveau client
+		// Envoi de l'historique du chat au client
 		chatHistory, _ := h.roomRepo.GetRecentChatMessages(ctx, client.roomCode)
 		chatBytes, _ := json.Marshal(chatHistory)
 		client.Send(domain.WSMessage{
@@ -129,13 +128,13 @@ func (h *Hub) Unregister(client *Client) {
 	ctx := context.Background()
 	_ = h.roomRepo.UpdatePlayerActivity(ctx, client.roomCode, client.userID, false)
 
-	// Lancer un compte à rebours de grâce de 45 secondes avant de retirer le joueur ou transférer le Master
+	// Lancer un compte à rebours de grâce de 10 secondes (zéro chat, zéro transfert de Master)
 	timerKey := fmt.Sprintf("%s:%s", client.roomCode, client.userID)
 	h.timersMu.Lock()
 	if t, exists := h.disconnectTimers[timerKey]; exists {
 		t.Stop()
 	}
-	h.disconnectTimers[timerKey] = time.AfterFunc(45*time.Second, func() {
+	h.disconnectTimers[timerKey] = time.AfterFunc(10*time.Second, func() {
 		h.timersMu.Lock()
 		delete(h.disconnectTimers, timerKey)
 		h.timersMu.Unlock()
@@ -143,9 +142,9 @@ func (h *Hub) Unregister(client *Client) {
 		bgCtx := context.Background()
 		p, err := h.roomRepo.GetPlayer(bgCtx, client.roomCode, client.userID)
 		if err == nil && !p.IsConnected {
-			// Le joueur ne s'est pas reconnecté dans le délai de grâce
+			// Les 10 secondes ont expiré sans reconnexion
 			_ = h.roomRepo.RemovePlayer(bgCtx, client.roomCode, client.userID)
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle (délai de grâce expiré)", p.Nickname))
+			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été déconnecté pour inactivité", p.Nickname))
 			h.HandleMasterSuccession(client.roomCode, client.userID)
 
 			remaining, _ := h.roomRepo.GetPlayers(bgCtx, client.roomCode)
@@ -158,7 +157,7 @@ func (h *Hub) Unregister(client *Client) {
 	})
 	h.timersMu.Unlock()
 
-	// Synchroniser l'état (IsConnected: false visible sur les avatars sans éjecter)
+	// Synchroniser discrètement l'état sans éjecter
 	h.SyncRoom(client.roomCode)
 
 	if h.gameHandler != nil {

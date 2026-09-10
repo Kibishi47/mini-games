@@ -50,7 +50,7 @@ func (w *WorkerManager) checkAFKPlayers(ctx context.Context) {
 		return
 	}
 
-	gracePeriod := 45 * time.Second
+	gracePeriod := 10 * time.Second
 	now := time.Now()
 
 	for _, code := range codes {
@@ -60,7 +60,7 @@ func (w *WorkerManager) checkAFKPlayers(ctx context.Context) {
 		}
 
 		for _, p := range players {
-			// Si marqué déconnecté depuis plus de 45s
+			// Si marqué déconnecté depuis plus de 10s
 			if !p.IsConnected && now.Sub(p.LastSeenAt) > gracePeriod {
 				_ = w.roomRepo.RemovePlayer(ctx, code, p.ID)
 				w.hub.HandleMasterSuccession(code, p.ID)
