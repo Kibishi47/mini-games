@@ -399,7 +399,11 @@ func (m *WordleGameManager) handleGuess(ctx context.Context, client *ws.Client, 
 	m.mu.RUnlock()
 
 	if allFinished {
-		m.endRound(ctx, client.RoomCode(), "Tous les joueurs ont terminé !")
+		// Délai de 1,5 seconde pour laisser le temps de voir l'animation de victoire/défaite
+		go func(rCode string) {
+			time.Sleep(1500 * time.Millisecond)
+			m.endRound(context.Background(), rCode, "Tous les joueurs ont terminé !")
+		}(client.RoomCode())
 	}
 }
 
@@ -451,8 +455,8 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 
 	allScores, _ := m.roomRepo.GetScores(ctx, roomCode)
 
-	// Broadcaster la fin de manche avec RÉVÉLATION DU MOT et compte à rebours de 10s
-	countdownSec := 10
+	// Broadcaster la fin de manche avec RÉVÉLATION DU MOT et compte à rebours de 8s
+	countdownSec := 8
 	endPayload, _ := json.Marshal(map[string]interface{}{
 		"round":         room.CurrentRound,
 		"max_rounds":    room.Settings.MaxRounds,

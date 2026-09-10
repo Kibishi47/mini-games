@@ -88,7 +88,20 @@ const rows = computed(() => {
     result.push(currentRow)
   }
 
-  // 3. Lignes vides restantes
+  // 3. Révélation persistante du mot sur la grille en cas de défaite / chrono écoulé
+  if (!gameStore.isSolved && gameStore.targetWord && result.length < maxAttempts) {
+    const revealRow: TileEvaluation[] = []
+    const targetChars = gameStore.targetWord.split('')
+    for (let i = 0; i < wordLen; i++) {
+      revealRow.push({
+        letter: targetChars[i] || '',
+        status: 'present', // Affichage en tuiles jaunes/highlight
+      })
+    }
+    result.push(revealRow)
+  }
+
+  // 4. Lignes vides restantes
   while (result.length < maxAttempts) {
     const emptyRow: TileEvaluation[] = []
     for (let i = 0; i < wordLen; i++) {
