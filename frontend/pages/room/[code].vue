@@ -221,7 +221,7 @@
                   variant="primary"
                   size="lg"
                   class="w-full text-lg"
-                  @click="startGame"
+                  @click="handleStartGame"
                 >
                   <Play class="w-6 h-6 mr-3 fill-current" />
                   <span>Lancer la Partie de Wordle !</span>
@@ -234,9 +234,22 @@
 
             <!-- Liste des Joueurs dans le Lobby -->
             <AppCard variant="white" shadow="md">
-              <h2 class="font-display font-black text-lg uppercase tracking-wider mb-4 border-b-2 border-ink-black pb-2 flex items-center justify-between">
+              <h2 class="font-display font-black text-lg uppercase tracking-wider mb-4 border-b-2 border-ink-black pb-2 flex flex-wrap items-center justify-between gap-2">
                 <span>Joueurs Présents ({{ roomStore.players.length }})</span>
-                <span class="text-xs text-ink-black/50 font-body">Code : {{ roomCode }}</span>
+                <div class="flex items-center space-x-2">
+                  <AppButton
+                    v-if="roomStore.isMaster"
+                    variant="neutral"
+                    size="sm"
+                    class="text-xs"
+                    @click="confirmResetScores"
+                    title="Remettre à zéro les scores de tous les joueurs"
+                  >
+                    <RotateCcw class="w-3.5 h-3.5 mr-1" />
+                    <span>Réinitialiser les scores</span>
+                  </AppButton>
+                  <span class="text-xs text-ink-black/50 font-body">Code : {{ roomCode }}</span>
+                </div>
               </h2>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -251,6 +264,9 @@
                       <div class="font-display font-black text-sm uppercase text-ink-black flex items-center space-x-1.5">
                         <span>{{ p.nickname }}</span>
                         <span v-if="p.is_master" title="Master">👑</span>
+                        <AppBadge v-if="p.location === 'in_game'" variant="neutral" class="ml-1 text-[10px] px-2 py-0">
+                          Sur le score
+                        </AppBadge>
                       </div>
                       <span class="text-[10px] font-condensed uppercase text-ink-black/60">
                         Score session : {{ p.score }} pts
@@ -357,6 +373,7 @@
       :is-master="roomStore.isMaster"
       :on-rematch="rematch"
       :on-return-lobby="returnToLobby"
+      :on-individual-return-lobby="returnLobby"
       :on-next-round="nextRound"
     />
   </div>
@@ -364,7 +381,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { Copy, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square } from 'lucide-vue-next'
+import { Copy, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square, RotateCcw } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
@@ -401,6 +418,9 @@ const {
   startGame,
   stopGame,
   returnToLobby,
+  returnLobby,
+  resetScores,
+  leaveRoom: wsLeaveRoom,
   nextRound,
   submitGuess,
   kickPlayer,
@@ -420,6 +440,23 @@ const confirmStopGame = () => {
   if (confirm('Voulez-vous vraiment arrêter la partie en cours et ramener tout le monde au lobby ?')) {
     stopGame()
   }
+}
+
+const confirmResetScores = () => {
+  if (confirm('Voulez-vous vraiment remettre à zéro les scores de tous les joueurs de la salle ?')) {
+    resetScores()
+  }
+}
+
+const handleStartGame = () => {
+  const playersStillInGame = roomStore.players.filter(p => p.location === 'in_game')
+  if (playersStillInGame.length > 0) {
+    const names = playersStillInGame.map(p => p.nickname).join(', ')
+    if (!confirm(`Certains joueurs sont encore sur l'écran des scores (${names}). Voulez-vous lancer quand même la partie ?`)) {
+      return
+    }
+  }
+  startGame()
 }
 
 const masterPlayer = computed(() => roomStore.masterPlayer)
@@ -454,6 +491,7 @@ const copyRoomCode = async () => {
 }
 
 const leaveRoom = () => {
+  wsLeaveRoom()
   profileStore.clearSession()
   router.push('/')
 }

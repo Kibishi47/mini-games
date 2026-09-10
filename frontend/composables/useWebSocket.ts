@@ -158,6 +158,16 @@ export function useWebSocket(roomCode: string) {
         gameStore.syncGameState(payload)
         break
 
+      case 'player:location_changed':
+        if (payload?.user_id && payload?.location) {
+          roomStore.updatePlayerLocation(payload.user_id, payload.location)
+        }
+        break
+
+      case 'room:scores_reset':
+        roomStore.resetPlayerScores()
+        break
+
       case 'error':
         errorMessage.value = payload?.error || 'Une erreur est survenue'
         setTimeout(() => {
@@ -214,6 +224,21 @@ export function useWebSocket(roomCode: string) {
     send('room:return_lobby', {})
   }
 
+  const returnLobby = () => {
+    send('player:return_lobby', {})
+  }
+
+  const resetScores = () => {
+    send('room:reset_scores', {})
+  }
+
+  const leaveRoom = () => {
+    send('room:leave', {})
+    if (socket.value) {
+      socket.value.close(1000, 'Voluntary leave')
+    }
+  }
+
   const nextRound = () => {
     send('game:next_round', {})
   }
@@ -240,6 +265,9 @@ export function useWebSocket(roomCode: string) {
     startGame,
     stopGame,
     returnToLobby,
+    returnLobby,
+    resetScores,
+    leaveRoom,
     nextRound,
     submitGuess,
     kickPlayer,

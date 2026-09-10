@@ -125,10 +125,15 @@ func (h *Hub) Unregister(client *Client) {
 	}
 	h.roomsMu.Unlock()
 
+	// Si départ volontaire explicite (room:leave), pas de timer de grâce ni de message supplémentaire
+	if client.IsVoluntaryLeave() {
+		return
+	}
+
 	ctx := context.Background()
 	_ = h.roomRepo.UpdatePlayerActivity(ctx, client.roomCode, client.userID, false)
 
-	// Lancer un compte à rebours de grâce de 10 secondes (zéro chat, zéro transfert de Master)
+	// Lancer un compte à rebours de grâce de 10 secondes pour perte de socket imprévue (F5, réseau)
 	timerKey := fmt.Sprintf("%s:%s", client.roomCode, client.userID)
 	h.timersMu.Lock()
 	if t, exists := h.disconnectTimers[timerKey]; exists {
@@ -207,6 +212,14 @@ func (h *Hub) HandleMasterSuccession(roomCode string, departedUserID uuid.UUID) 
 	if newMaster != nil {
 		_ = h.roomRepo.UpdateRoomMaster(ctx, roomCode, newMaster.ID)
 		h.BroadcastSystemMessage(roomCode, fmt.Sprintf("%s est maintenant le Master de la salle.", newMaster.Nickname))
+		masterChangedPayload, _ := json.Marshal(map[string]interface{}{
+			"master_id": newMaster.ID,
+			"nickname":  newMaster.Nickname,
+		})
+		h.BroadcastToRoom(roomCode, domain.WSMessage{
+			Type:    "room:master_changed",
+			Payload: masterChangedPayload,
+		})
 		h.SyncRoom(roomCode)
 	}
 }
@@ -217,6 +230,12 @@ func (h *Hub) HandleMessage(client *Client, msg domain.WSMessage) {
 		if h.gameHandler != nil {
 			h.gameHandler.HandleGameAction(client, msg.Type, msg.Payload)
 		}
+	case msg.Type == "room:leave":
+		h.handleLeave(client)
+	case msg.Type == "player:return_lobby":
+		h.handlePlayerReturnLobby(client)
+	case msg.Type == "room:reset_scores":
+		h.handleResetScores(client)
 	case msg.Type == "room:chat":
 		h.handleChat(client, msg.Payload)
 	case msg.Type == "room:update_settings":
@@ -236,6 +255,88 @@ func (h *Hub) HandleMessage(client *Client, msg domain.WSMessage) {
 	case msg.Type == "room:sync":
 		h.SyncRoom(client.roomCode)
 	}
+}
+
+func (h *Hub) handleLeave(client *Client) {
+	client.SetVoluntaryLeave(true)
+	ctx := context.Background()
+
+	// Arrêter tout timer de reconnexion existant
+	timerKey := fmt.Sprintf("%s:%s", client.roomCode, client.userID)
+	h.timersMu.Lock()
+	if t, exists := h.disconnectTimers[timerKey]; exists {
+		t.Stop()
+		delete(h.disconnectTimers, timerKey)
+	}
+	h.timersMu.Unlock()
+
+	p, _ := h.roomRepo.GetPlayer(ctx, client.roomCode, client.userID)
+	nickname := "Un joueur"
+	if p != nil {
+		nickname = p.Nickname
+	}
+
+	// Suppression immédiate de la salle
+	_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, client.userID)
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle.", nickname))
+
+	// Événement player:left
+	leftPayload, _ := json.Marshal(map[string]interface{}{
+		"user_id":  client.userID,
+		"nickname": nickname,
+	})
+	h.BroadcastToRoom(client.roomCode, domain.WSMessage{
+		Type:    "player:left",
+		Payload: leftPayload,
+	})
+
+	// Passation Master si le partant était Master
+	h.HandleMasterSuccession(client.roomCode, client.userID)
+
+	remaining, _ := h.roomRepo.GetPlayers(ctx, client.roomCode)
+	if len(remaining) == 0 {
+		_ = h.roomRepo.CloseRoom(ctx, client.roomCode)
+	} else {
+		h.SyncRoom(client.roomCode)
+	}
+
+	if h.gameHandler != nil {
+		h.gameHandler.OnPlayerLeft(client.roomCode, client.userID)
+	}
+
+	client.Close()
+}
+
+func (h *Hub) handlePlayerReturnLobby(client *Client) {
+	ctx := context.Background()
+	_ = h.roomRepo.SetPlayerLocation(ctx, client.roomCode, client.userID, "lobby")
+
+	locationPayload, _ := json.Marshal(map[string]interface{}{
+		"user_id":  client.userID,
+		"location": "lobby",
+	})
+	h.BroadcastToRoom(client.roomCode, domain.WSMessage{
+		Type:    "player:location_changed",
+		Payload: locationPayload,
+	})
+	h.SyncRoom(client.roomCode)
+}
+
+func (h *Hub) handleResetScores(client *Client) {
+	ctx := context.Background()
+	room, err := h.roomRepo.GetRoom(ctx, client.roomCode)
+	if err != nil || room.MasterID != client.userID {
+		client.SendError("Seul le Master peut réinitialiser les scores")
+		return
+	}
+
+	_ = h.roomRepo.ResetScores(ctx, client.roomCode)
+	h.BroadcastSystemMessage(client.roomCode, "Le Master a réinitialisé tous les scores de la salle.")
+	h.BroadcastToRoom(client.roomCode, domain.WSMessage{
+		Type:    "room:scores_reset",
+		Payload: []byte("{}"),
+	})
+	h.SyncRoom(client.roomCode)
 }
 
 func (h *Hub) handleChat(client *Client, payload json.RawMessage) {

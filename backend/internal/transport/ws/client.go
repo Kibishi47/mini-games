@@ -13,14 +13,15 @@ import (
 )
 
 type Client struct {
-	hub          *Hub
-	conn         *websocket.Conn
-	roomCode     string
-	userID       uuid.UUID
-	sessionToken string
-	sendChan     chan []byte
-	isClosed     bool
-	mu           sync.Mutex
+	hub              *Hub
+	conn             *websocket.Conn
+	roomCode         string
+	userID           uuid.UUID
+	sessionToken     string
+	sendChan         chan []byte
+	isClosed         bool
+	isVoluntaryLeave bool
+	mu               sync.Mutex
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, roomCode string, userID uuid.UUID, sessionToken string) *Client {
@@ -44,6 +45,18 @@ func (c *Client) UserID() uuid.UUID {
 
 func (c *Client) SessionToken() string {
 	return c.sessionToken
+}
+
+func (c *Client) SetVoluntaryLeave(val bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.isVoluntaryLeave = val
+}
+
+func (c *Client) IsVoluntaryLeave() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.isVoluntaryLeave
 }
 
 func (c *Client) ReadPump(ctx context.Context) {
