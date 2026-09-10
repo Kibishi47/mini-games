@@ -68,7 +68,7 @@ func (r *RoomRepository) CreateSession(ctx context.Context, token string, data *
 	if err != nil {
 		return err
 	}
-	return r.client.Set(ctx, r.sessionKey(token), bytes, 45*time.Second).Err()
+	return r.client.Set(ctx, r.sessionKey(token), bytes, 24*time.Hour).Err()
 }
 
 func (r *RoomRepository) GetSession(ctx context.Context, token string) (*domain.SessionData, error) {
@@ -88,7 +88,7 @@ func (r *RoomRepository) GetSession(ctx context.Context, token string) (*domain.
 }
 
 func (r *RoomRepository) RefreshSession(ctx context.Context, token string) error {
-	return r.client.Expire(ctx, r.sessionKey(token), 45*time.Second).Err()
+	return r.client.Expire(ctx, r.sessionKey(token), 24*time.Hour).Err()
 }
 
 // -----------------------------------------------------------------------------
