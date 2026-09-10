@@ -308,6 +308,26 @@
 
               <!-- Plateau et Clavier Wordle -->
               <WordleGrid :on-submit="submitGuess" />
+
+              <!-- Barre de secours et navigation de secours (Failsafe) -->
+              <div class="mt-6 pt-4 border-t-2 border-ink-black/20 flex flex-wrap items-center justify-between gap-3">
+                <button
+                  @click="leaveRoom"
+                  class="font-display font-bold text-xs uppercase text-ink-black/60 hover:text-game-red flex items-center gap-1.5 transition-none"
+                >
+                  <LogOut class="w-4 h-4" />
+                  <span>Quitter la partie</span>
+                </button>
+
+                <button
+                  v-if="roomStore.isMaster"
+                  @click="confirmStopGame"
+                  class="font-display font-black text-xs uppercase text-game-red hover:underline flex items-center gap-1.5"
+                >
+                  <Square class="w-3.5 h-3.5 fill-current" />
+                  <span>Arrêter la partie et revenir au Lobby</span>
+                </button>
+              </div>
             </AppCard>
           </div>
 
