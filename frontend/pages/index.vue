@@ -26,15 +26,13 @@
         <div class="flex items-center space-x-3 border-[3px] border-ink-black bg-board-white px-4 py-2 rounded-2xl shadow-pop-xs">
           <GameMascot :name="profileStore.mascot" mood="idle" size="sm" />
           <div class="text-left">
-            <div class="font-display font-black text-sm text-ink-black uppercase">
+            <div class="font-display font-black text-sm text-ink-black uppercase leading-tight">
               {{ profileStore.nickname }}
-            </div>
-            <div class="text-[10px] font-condensed text-ink-black/60 uppercase">
-              Mode Invité Instantané
             </div>
           </div>
         </div>
       </div>
+    </header>
     <!-- Message d'alerte Pop Moderniste si salle fermée ou expirée -->
     <div v-if="closedRoomAlert" class="max-w-2xl mx-auto mt-6 px-6 w-full">
       <div class="bg-game-yellow text-ink-black font-display font-black text-sm px-6 py-3.5 rounded-2xl border-[3.5px] border-ink-black shadow-pop-md flex items-center justify-between">
