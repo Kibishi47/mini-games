@@ -183,7 +183,19 @@
           <span>Lancer la manche suivante</span>
         </AppButton>
 
-        <!-- Bouton Master : Retour au Lobby (si fin de partie) -->
+        <!-- Bouton individuel : Retourner au Lobby (disponible pour tous en game_over) -->
+        <AppButton
+          v-if="gameStore.isGameOver"
+          variant="primary"
+          size="md"
+          class="flex-1"
+          @click="handleIndividualReturnLobby"
+        >
+          <RotateCcw class="w-5 h-5 mr-2" />
+          <span>Retourner au Lobby</span>
+        </AppButton>
+
+        <!-- Bouton Master : Retour au Lobby pour tout le monde (si fin de partie) -->
         <AppButton
           v-if="gameStore.isGameOver && isMaster"
           variant="success"
@@ -192,15 +204,12 @@
           @click="onReturnLobby"
         >
           <RotateCcw class="w-5 h-5 mr-2" />
-          <span>Revanche / Retour au Lobby</span>
+          <span>Revanche / Tous au Lobby</span>
         </AppButton>
       </div>
 
-      <!-- Message d'attente pour les non-masters -->
-      <div v-if="gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-game-blue animate-pulse">
-        En attente du Master pour retourner au Lobby...
-      </div>
-      <div v-else-if="!gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-ink-black/70">
+      <!-- Message d'attente pour les non-masters si manche en cours -->
+      <div v-if="!gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-ink-black/70">
         En attente du Master ou du compte à rebours…
       </div>
     </div>
@@ -219,12 +228,20 @@ const props = defineProps<{
   isMaster: boolean
   onRematch?: () => void
   onReturnLobby?: () => void
+  onIndividualReturnLobby?: () => void
   onNextRound?: () => void
 }>()
 
 const gameStore = useGameStore()
 const roomStore = useRoomStore()
 const copied = ref(false)
+
+const handleIndividualReturnLobby = () => {
+  gameStore.showRoundSummary = false
+  if (props.onIndividualReturnLobby) {
+    props.onIndividualReturnLobby()
+  }
+}
 
 const countdownKey = ref(0)
 const countdownSeconds = ref(8)
@@ -262,6 +279,9 @@ const targetLetters = computed(() => {
 
 const closeModal = () => {
   gameStore.showRoundSummary = false
+  if (gameStore.isGameOver && props.onIndividualReturnLobby) {
+    props.onIndividualReturnLobby()
+  }
 }
 
 const scoreboardPlayers = computed(() => {
