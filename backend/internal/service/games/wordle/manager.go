@@ -46,6 +46,10 @@ type WordleGameManager struct {
 	roomRepo     *redisRepo.RoomRepository
 	redisClient  *redis.Client
 	activeRounds map[string]*RoundState // roomCode -> RoundState
+
+	// Timer de transition entre manches
+	roundTimersMu sync.Mutex
+	nextRoundTimers map[string]*time.Timer // roomCode -> Timer
 }
 
 func NewWordleGameManager(
@@ -55,11 +59,12 @@ func NewWordleGameManager(
 	redisClient *redis.Client,
 ) *WordleGameManager {
 	mgr := &WordleGameManager{
-		dict:         dict,
-		hub:          hub,
-		roomRepo:     roomRepo,
-		redisClient:  redisClient,
-		activeRounds: make(map[string]*RoundState),
+		dict:            dict,
+		hub:             hub,
+		roomRepo:        roomRepo,
+		redisClient:     redisClient,
+		activeRounds:    make(map[string]*RoundState),
+		nextRoundTimers: make(map[string]*time.Timer),
 	}
 	hub.SetGameHandler(mgr)
 	return mgr
@@ -71,12 +76,45 @@ func (m *WordleGameManager) HandleGameAction(client *ws.Client, action string, p
 	switch action {
 	case "game:start":
 		m.handleStartGame(ctx, client)
+	case "game:next_round", "game:start_round":
+		m.handleNextRound(ctx, client)
 	case "game:guess":
 		m.handleGuess(ctx, client, payload)
 	case "game:get_state":
 		m.handleGetState(client)
 	case "game:stop", "room:return_lobby", "room:rematch":
 		m.handleStopOrReturnLobby(ctx, client, action)
+	}
+}
+
+func (m *WordleGameManager) handleNextRound(ctx context.Context, client *ws.Client) {
+	room, err := m.roomRepo.GetRoom(ctx, client.RoomCode())
+	if err != nil {
+		client.SendError("Salle introuvable")
+		return
+	}
+
+	if room.MasterID != client.UserID() {
+		client.SendError("Seul le Master peut lancer la manche suivante")
+		return
+	}
+
+	// Couper le timer de compte à rebours automatique
+	m.roundTimersMu.Lock()
+	if timer, exists := m.nextRoundTimers[client.RoomCode()]; exists {
+		timer.Stop()
+		delete(m.nextRoundTimers, client.RoomCode())
+	}
+	m.roundTimersMu.Unlock()
+
+	// Démarrer la manche suivante si la partie est encore active
+	if room.CurrentRound < room.Settings.MaxRounds {
+		m.startRound(ctx, room, room.CurrentRound+1)
+	} else {
+		// Revenir au lobby si toutes les manches sont jouées
+		_ = m.roomRepo.UpdateRoomStatus(ctx, client.RoomCode(), domain.RoomStatusInLobby)
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "Partie terminée. Retrouvez le classement général.")
+		m.hub.SyncRoom(client.RoomCode())
 	}
 }
 
@@ -91,6 +129,14 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 		client.SendError("Action réservée au Master")
 		return
 	}
+
+	// Annuler tout timer de prochaine manche
+	m.roundTimersMu.Lock()
+	if timer, exists := m.nextRoundTimers[client.RoomCode()]; exists {
+		timer.Stop()
+		delete(m.nextRoundTimers, client.RoomCode())
+	}
+	m.roundTimersMu.Unlock()
 
 	// 1. Stopper la manche en cours
 	m.mu.Lock()
@@ -123,11 +169,11 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 	})
 
 	if action == "game:stop" {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), "🛑 Le Master a arrêté la partie et ramené tout le monde au lobby.")
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "Le Master a arrêté la partie et ramené tout le monde au lobby.")
 	} else if action == "room:rematch" {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), "🔄 Le Master a relancé la salle en Lobby pour une revanche !")
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "Le Master a relancé la salle en Lobby pour une revanche.")
 	} else {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), "↩️ Le Master a ramené la salle au Lobby.")
+		m.hub.BroadcastSystemMessage(client.RoomCode(), "Le Master a ramené la salle au Lobby.")
 	}
 
 	m.hub.SyncRoom(client.RoomCode())
@@ -223,7 +269,7 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 	})
 
 	m.hub.SyncRoom(room.Code)
-	m.hub.BroadcastSystemMessage(room.Code, fmt.Sprintf("🎮 Manche %d lancée ! Mot secret de %d lettres.", roundNum, wordLen))
+	m.hub.BroadcastSystemMessage(room.Code, fmt.Sprintf("Manche %d lancée ! Mot secret de %d lettres.", roundNum, wordLen))
 
 	// Timer de fin de manche automatique
 	go func(roomCode string, rNum int, targetEndsAt time.Time) {
@@ -256,34 +302,26 @@ func (m *WordleGameManager) handleGuess(ctx context.Context, client *ws.Client, 
 		return
 	}
 
-	if time.Now().After(round.EndsAt) {
-		client.SendError("Le temps imparti pour cette manche est écoulé")
-		return
-	}
-
-	m.mu.Lock()
-	playerState, ok := round.Players[client.UserID()]
-	m.mu.Unlock()
-
-	if !ok {
-		client.SendError("Vous êtes en mode spectateur pour cette manche")
+	playerState, exists := round.Players[client.UserID()]
+	if !exists {
+		client.SendError("Vous ne participez pas à cette manche")
 		return
 	}
 
 	if playerState.IsFinished {
-		client.SendError("Vous avez déjà terminé votre manche")
+		client.SendError("Vous avez déjà terminé vos essais pour cette manche")
 		return
 	}
 
 	guess := strings.ToUpper(strings.TrimSpace(body.Guess))
 	if len(guess) != round.WordLength {
-		client.SendError(fmt.Sprintf("Le mot doit contenir exactement %d lettres", round.WordLength))
+		client.SendError(fmt.Sprintf("Le mot doit comporter exactement %d lettres", round.WordLength))
 		return
 	}
 
-	// Validation du mot dans le dictionnaire étendu en O(1)
+	// Validation du mot dans le dictionnaire étendu (targets + allowed)
 	if !m.dict.IsValid(guess) {
-		client.SendError("Ce mot n'existe pas dans le dictionnaire")
+		client.SendError(fmt.Sprintf("'%s' n'est pas un mot valide du dictionnaire français", guess))
 		return
 	}
 
@@ -344,12 +382,12 @@ func (m *WordleGameManager) handleGuess(ctx context.Context, client *ws.Client, 
 		Payload: opponentData,
 	})
 
-	// Si résolu, féliciter dans le chat
+	// Notification sobre sans émoji
 	if isSolved {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), fmt.Sprintf("✨ %s a trouvé le mot en %d essai(s) !", playerState.Nickname, len(playerState.Attempts)))
+		m.hub.BroadcastSystemMessage(client.RoomCode(), fmt.Sprintf("%s a trouvé le mot en %d essai(s) !", playerState.Nickname, len(playerState.Attempts)))
 	}
 
-	// Vérifier si tous les joueurs actifs ont terminé
+	// Vérifier si tous les joueurs actifs ont terminé la manche
 	allFinished := true
 	m.mu.RLock()
 	for _, p := range round.Players {
@@ -382,12 +420,14 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 
 	// Mise à jour des scores dans Redis
 	roundScoresMap := make(map[string]int)
+	roundSolveTimes := make(map[string]int)
 	var winnerID *uuid.UUID
 	var winnerName string
 	highestRoundScore := -1
 
 	for uid, p := range round.Players {
 		roundScoresMap[uid.String()] = p.RoundScore
+		roundSolveTimes[uid.String()] = p.SolveTimeSec
 		if p.RoundScore > 0 {
 			_, _ = m.roomRepo.AddScore(ctx, roomCode, uid, p.RoundScore)
 		}
@@ -411,14 +451,18 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 
 	allScores, _ := m.roomRepo.GetScores(ctx, roomCode)
 
-	// Broadcaster la fin de manche avec RÉVÉLATION DU MOT
+	// Broadcaster la fin de manche avec RÉVÉLATION DU MOT et compte à rebours de 10s
+	countdownSec := 10
 	endPayload, _ := json.Marshal(map[string]interface{}{
-		"round":        room.CurrentRound,
-		"secret_word":  round.TargetWord,
-		"reason":       reason,
-		"winner_name":  winnerName,
-		"round_scores": roundScoresMap,
-		"total_scores": allScores,
+		"round":         room.CurrentRound,
+		"max_rounds":    room.Settings.MaxRounds,
+		"secret_word":   round.TargetWord,
+		"reason":        reason,
+		"winner_name":   winnerName,
+		"round_scores":  roundScoresMap,
+		"solve_times":   roundSolveTimes,
+		"total_scores":  allScores,
+		"countdown_sec": countdownSec,
 	})
 
 	m.hub.BroadcastToRoom(roomCode, domain.WSMessage{
@@ -426,24 +470,31 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 		Payload: endPayload,
 	})
 
-	m.hub.BroadcastSystemMessage(roomCode, fmt.Sprintf("🏁 Fin de manche ! Le mot était : %s", round.TargetWord))
+	m.hub.BroadcastSystemMessage(roomCode, fmt.Sprintf("Fin de manche. Le mot était : %s", round.TargetWord))
 
 	// Vérifier s'il reste des manches à jouer
 	if room.CurrentRound < room.Settings.MaxRounds {
-		// Compte à rebours de 7s avant la manche suivante
-		go func(rCode string, nextRoundNum int) {
-			time.Sleep(7 * time.Second)
-			m.mu.RLock()
-			r, err := m.roomRepo.GetRoom(context.Background(), rCode)
-			m.mu.RUnlock()
-			if err == nil && r.Status == domain.RoomStatusInGame {
+		// Compte à rebours automatique de 10s avant la manche suivante (annulable par le Master)
+		m.roundTimersMu.Lock()
+		if oldTimer, exists := m.nextRoundTimers[roomCode]; exists {
+			oldTimer.Stop()
+		}
+		nextRoundNum := room.CurrentRound + 1
+		m.nextRoundTimers[roomCode] = time.AfterFunc(time.Duration(countdownSec)*time.Second, func() {
+			m.roundTimersMu.Lock()
+			delete(m.nextRoundTimers, roomCode)
+			m.roundTimersMu.Unlock()
+
+			r, getErr := m.roomRepo.GetRoom(context.Background(), roomCode)
+			if getErr == nil && r.Status == domain.RoomStatusInGame {
 				m.startRound(context.Background(), r, nextRoundNum)
 			}
-		}(roomCode, room.CurrentRound+1)
+		})
+		m.roundTimersMu.Unlock()
 	} else {
 		// Partie terminée !
 		_ = m.roomRepo.UpdateRoomStatus(ctx, roomCode, domain.RoomStatusInLobby)
-		m.hub.BroadcastSystemMessage(roomCode, "🏆 Partie terminée ! Retrouvez le classement général.")
+		m.hub.BroadcastSystemMessage(roomCode, "Partie terminée ! Retrouvez le classement général.")
 		m.hub.SyncRoom(roomCode)
 	}
 }

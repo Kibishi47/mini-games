@@ -11,25 +11,33 @@
         <X class="w-5 h-5" />
       </button>
 
-      <!-- Titre et Mot Secret Révélé -->
-      <div class="text-center space-y-2">
+      <!-- Titre et Mot Secret Révélé sous forme de tuiles Pop Modernistes -->
+      <div class="text-center space-y-3">
         <div class="inline-flex items-center space-x-2 border-2 border-ink-black px-3 py-1 rounded-full bg-game-pink font-condensed text-xs uppercase mb-1">
           <Trophy class="w-4 h-4 text-ink-black" />
           <span>{{ gameStore.isGameOver ? 'Palmarès Final' : `Fin Manche ${gameStore.currentRound}/${gameStore.maxRounds}` }}</span>
         </div>
 
         <h3 class="font-display font-black text-3xl sm:text-4xl uppercase tracking-tight text-ink-black">
-          {{ gameStore.isGameOver ? '🏆 Victoire au Sommet !' : 'Tour Terminé !' }}
+          {{ gameStore.isGameOver ? 'Victoire au Sommet !' : 'Tour Terminé !' }}
         </h3>
         
         <p class="font-display font-bold uppercase text-xs text-ink-black/60">Le mot secret était :</p>
-        <div class="inline-block px-6 py-2.5 rounded-2xl bg-game-yellow border-[3px] border-ink-black text-ink-black font-condensed font-black text-3xl tracking-widest shadow-pop-sm">
-          {{ gameStore.targetWord }}
+        
+        <!-- Tuiles pop-modernistes individuelles avec bordure 3px noire -->
+        <div class="flex items-center justify-center gap-2 flex-wrap pt-1">
+          <div
+            v-for="(letter, idx) in targetLetters"
+            :key="idx"
+            class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-game-green text-board-white border-[3px] border-ink-black shadow-pop-sm flex items-center justify-center font-condensed font-black text-2xl sm:text-3xl uppercase transform transition-transform hover:-translate-y-1"
+          >
+            {{ letter }}
+          </div>
         </div>
       </div>
 
       <!-- Piste de Score de Jeu de Société -->
-      <div class="space-y-3 max-h-72 overflow-y-auto pr-1">
+      <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
         <div
           v-for="(player, index) in scoreboardPlayers"
           :key="player.id"
@@ -55,11 +63,17 @@
 
             <div>
               <div class="font-display font-black text-sm uppercase text-ink-black">{{ player.nickname }}</div>
-              <div class="font-condensed text-xs uppercase text-ink-black/70">
+              <div class="font-condensed text-xs uppercase text-ink-black/70 flex items-center gap-2">
                 <span v-if="gameStore.roundSummary?.round_scores?.[player.id]">
-                  +{{ gameStore.roundSummary.round_scores[player.id] }} pts cette manche
+                  +{{ gameStore.roundSummary.round_scores[player.id] }} pts
                 </span>
-                <span v-else>0 pt cette manche</span>
+                <span v-else>0 pt</span>
+                <span
+                  v-if="gameStore.roundSummary?.solve_times?.[player.id]"
+                  class="text-[11px] font-bold text-game-green bg-game-green/15 px-2 py-0.5 rounded-md border border-ink-black/30"
+                >
+                  ⏱ {{ gameStore.roundSummary.solve_times[player.id] }}s
+                </span>
               </div>
             </div>
           </div>
@@ -76,7 +90,24 @@
         </div>
       </div>
 
-      <!-- Actions : Copier Émojis, Fermer & Revanche Master -->
+      <!-- Barre de compte à rebours animée pop-moderniste (si manche intermédiaire) -->
+      <div v-if="!gameStore.isGameOver" class="space-y-1.5">
+        <div class="flex items-center justify-between text-xs font-display font-black uppercase text-ink-black">
+          <span class="flex items-center gap-1.5">
+            <Clock class="w-4 h-4 text-game-blue" />
+            <span>Prochaine manche</span>
+          </span>
+          <span class="font-condensed text-sm font-black text-game-blue">{{ countdownRemaining }}s</span>
+        </div>
+        <div class="w-full h-4 bg-board-cream rounded-full border-[3px] border-ink-black overflow-hidden p-0.5 shadow-pop-xs">
+          <div
+            class="h-full bg-game-yellow rounded-full transition-all duration-300 ease-linear border-r-2 border-ink-black"
+            :style="{ width: `${countdownPercent}%` }"
+          />
+        </div>
+      </div>
+
+      <!-- Actions : Copier Émojis, Fermer & Commandes Master -->
       <div class="flex flex-col sm:flex-row gap-3 pt-2">
         <AppButton
           variant="neutral"
@@ -85,19 +116,22 @@
           @click="copyEmojiGrid"
         >
           <Share2 class="w-5 h-5 mr-2" />
-          <span>{{ copied ? 'Copié ! 🟩🟨⬛' : 'Partager mes émojis 🟩🟨⬛' }}</span>
+          <span>{{ copied ? 'Copié !' : 'Partager mes émojis' }}</span>
         </AppButton>
 
+        <!-- Bouton Master : Lancer la manche suivante immédiatement -->
         <AppButton
-          variant="neutral"
+          v-if="!gameStore.isGameOver && isMaster"
+          variant="success"
           size="md"
-          class="sm:w-32"
-          @click="closeModal"
+          class="flex-1"
+          @click="onNextRound"
         >
-          <span>Fermer ✕</span>
+          <Play class="w-5 h-5 mr-2 fill-current" />
+          <span>Lancer la manche suivante</span>
         </AppButton>
 
-        <!-- Bouton Master : Retour au Lobby -->
+        <!-- Bouton Master : Retour au Lobby (si fin de partie) -->
         <AppButton
           v-if="gameStore.isGameOver && isMaster"
           variant="success"
@@ -106,38 +140,79 @@
           @click="onReturnLobby"
         >
           <RotateCcw class="w-5 h-5 mr-2" />
-          <span>Retourner au Lobby 🔄</span>
+          <span>Retourner au Lobby</span>
         </AppButton>
       </div>
 
-      <!-- En attente du Master (joueurs normaux si fin de partie) -->
+      <!-- Message d'attente pour les non-masters -->
       <div v-if="gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-game-blue animate-pulse">
-        ⏳ En attente du Master pour retourner au Lobby...
+        En attente du Master pour retourner au Lobby...
       </div>
-      <div v-else-if="!gameStore.isGameOver" class="text-center font-display font-bold text-xs uppercase text-ink-black/60">
-        La manche suivante commence dans un instant...
+      <div v-else-if="!gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-ink-black/70">
+        En attente du Master ou du compte à rebours...
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Trophy, Share2, RotateCcw, X } from 'lucide-vue-next'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { Trophy, Share2, RotateCcw, X, Clock, Play } from 'lucide-vue-next'
 import { useGameStore } from '~/stores/game'
 import { useRoomStore } from '~/stores/room'
 import GameMascot from '~/components/ui/GameMascot.vue'
 import AppButton from '~/components/ui/AppButton.vue'
 
-defineProps<{
+const props = defineProps<{
   isMaster: boolean
   onRematch?: () => void
   onReturnLobby?: () => void
+  onNextRound?: () => void
 }>()
 
 const gameStore = useGameStore()
 const roomStore = useRoomStore()
 const copied = ref(false)
+
+const countdownRemaining = ref(10)
+const totalCountdown = ref(10)
+let timerId: any = null
+
+const startCountdown = (seconds: number) => {
+  if (timerId) clearInterval(timerId)
+  totalCountdown.value = seconds > 0 ? seconds : 10
+  countdownRemaining.value = totalCountdown.value
+  timerId = setInterval(() => {
+    if (countdownRemaining.value > 0) {
+      countdownRemaining.value -= 1
+    } else {
+      clearInterval(timerId)
+    }
+  }, 1000)
+}
+
+watch(() => gameStore.showRoundSummary, (shown) => {
+  if (shown && !gameStore.isGameOver) {
+    const sec = gameStore.roundSummary?.countdown_sec || 10
+    startCountdown(sec)
+  } else {
+    if (timerId) clearInterval(timerId)
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (timerId) clearInterval(timerId)
+})
+
+const countdownPercent = computed(() => {
+  if (totalCountdown.value <= 0) return 0
+  return Math.min(100, Math.max(0, (countdownRemaining.value / totalCountdown.value) * 100))
+})
+
+const targetLetters = computed(() => {
+  const word = gameStore.targetWord || ''
+  return word.split('')
+})
 
 const closeModal = () => {
   gameStore.showRoundSummary = false

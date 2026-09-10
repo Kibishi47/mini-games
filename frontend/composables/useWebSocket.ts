@@ -165,6 +165,10 @@ export function useWebSocket(roomCode: string) {
     send('room:return_lobby', {})
   }
 
+  const nextRound = () => {
+    send('game:next_round', {})
+  }
+
   onMounted(() => {
     connect()
   })
@@ -186,6 +190,7 @@ export function useWebSocket(roomCode: string) {
     startGame,
     stopGame,
     returnToLobby,
+    nextRound,
     submitGuess,
     kickPlayer,
     banPlayer,

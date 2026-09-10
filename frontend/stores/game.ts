@@ -24,11 +24,14 @@ export interface OpponentProgress {
 
 export interface RoundSummary {
   round: number
+  max_rounds?: number
   secret_word: string
   reason: string
   winner_name: string
   round_scores: Record<string, number>
+  solve_times?: Record<string, number>
   total_scores: Record<string, number>
+  countdown_sec?: number
 }
 
 export const useGameStore = defineStore('game', {
