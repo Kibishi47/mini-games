@@ -11,7 +11,7 @@
         <X class="w-5 h-5" />
       </button>
 
-      <!-- Titre et Mot Secret Révélé sous forme de tuiles Pop Modernistes -->
+      <!-- Titre et Mot Secret Révélé -->
       <div class="text-center space-y-3">
         <div class="inline-flex items-center space-x-2 border-2 border-ink-black px-3 py-1 rounded-full bg-game-pink font-condensed text-xs uppercase mb-1">
           <Trophy class="w-4 h-4 text-ink-black" />
@@ -36,8 +36,59 @@
         </div>
       </div>
 
+      <!-- Grand Podium Final à 3 marches (si fin de partie) -->
+      <div v-if="gameStore.isGameOver && scoreboardPlayers.length >= 2" class="pt-4 pb-2">
+        <div class="flex items-end justify-center gap-3 sm:gap-4 max-w-md mx-auto">
+          <!-- 2ème Place (Argent) -->
+          <div v-if="scoreboardPlayers[1]" class="flex-1 flex flex-col items-center">
+            <GameMascot :name="(scoreboardPlayers[1].mascot as any) || 'domino'" mood="happy" size="md" class="mb-1" />
+            <div class="font-display font-black text-xs uppercase text-ink-black truncate max-w-[80px] sm:max-w-[100px]">
+              {{ scoreboardPlayers[1].nickname }}
+            </div>
+            <div class="font-condensed font-black text-xs text-game-blue mb-1">
+              {{ scoreboardPlayers[1].score }} pts
+            </div>
+            <div class="w-full h-24 bg-board-white rounded-t-2xl border-[3px] border-ink-black flex flex-col items-center justify-center shadow-pop-xs">
+              <span class="font-display font-black text-2xl text-ink-black">#2</span>
+              <span class="text-[9px] font-condensed uppercase font-bold text-ink-black/60">Argent</span>
+            </div>
+          </div>
+
+          <!-- 1ère Place (Or) -->
+          <div v-if="scoreboardPlayers[0]" class="flex-1 flex flex-col items-center">
+            <div class="text-xs font-black uppercase text-game-yellow mb-0.5 animate-bounce">Champion</div>
+            <GameMascot :name="(scoreboardPlayers[0].mascot as any) || 'dice'" mood="happy" size="lg" class="mb-1" />
+            <div class="font-display font-black text-sm uppercase text-ink-black truncate max-w-[90px] sm:max-w-[110px]">
+              {{ scoreboardPlayers[0].nickname }}
+            </div>
+            <div class="font-condensed font-black text-sm text-game-blue mb-1">
+              {{ scoreboardPlayers[0].score }} pts
+            </div>
+            <div class="w-full h-32 bg-game-yellow rounded-t-2xl border-[3.5px] border-ink-black flex flex-col items-center justify-center shadow-pop-sm">
+              <span class="font-display font-black text-3xl text-ink-black">#1</span>
+              <span class="text-[10px] font-condensed uppercase font-black text-ink-black/80">Vainqueur</span>
+            </div>
+          </div>
+
+          <!-- 3ème Place (Bronze) -->
+          <div v-if="scoreboardPlayers[2]" class="flex-1 flex flex-col items-center">
+            <GameMascot :name="(scoreboardPlayers[2].mascot as any) || 'meeple'" mood="happy" size="md" class="mb-1" />
+            <div class="font-display font-black text-xs uppercase text-ink-black truncate max-w-[80px] sm:max-w-[100px]">
+              {{ scoreboardPlayers[2].nickname }}
+            </div>
+            <div class="font-condensed font-black text-xs text-game-blue mb-1">
+              {{ scoreboardPlayers[2].score }} pts
+            </div>
+            <div class="w-full h-18 bg-game-pink/40 rounded-t-2xl border-[3px] border-ink-black flex flex-col items-center justify-center shadow-pop-xs">
+              <span class="font-display font-black text-xl text-ink-black">#3</span>
+              <span class="text-[9px] font-condensed uppercase font-bold text-ink-black/60">Bronze</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Piste de Score de Jeu de Société -->
-      <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
+      <div class="space-y-3 max-h-56 overflow-y-auto pr-1">
         <div
           v-for="(player, index) in scoreboardPlayers"
           :key="player.id"
@@ -90,19 +141,20 @@
         </div>
       </div>
 
-      <!-- Barre de compte à rebours animée pop-moderniste (si manche intermédiaire) -->
+      <!-- Barre de compte à rebours fluide 60 FPS CSS pur (8 secondes) -->
       <div v-if="!gameStore.isGameOver" class="space-y-1.5">
         <div class="flex items-center justify-between text-xs font-display font-black uppercase text-ink-black">
           <span class="flex items-center gap-1.5">
             <Clock class="w-4 h-4 text-game-blue" />
             <span>Prochaine manche</span>
           </span>
-          <span class="font-condensed text-sm font-black text-game-blue">{{ countdownRemaining }}s</span>
+          <span class="font-condensed text-sm font-black text-game-blue">{{ countdownSeconds }}s</span>
         </div>
         <div class="w-full h-4 bg-board-cream rounded-full border-[3px] border-ink-black overflow-hidden p-0.5 shadow-pop-xs">
           <div
-            class="h-full bg-game-yellow rounded-full transition-all duration-300 ease-linear border-r-2 border-ink-black"
-            :style="{ width: `${countdownPercent}%` }"
+            :key="countdownKey"
+            class="h-full bg-game-yellow rounded-full border-r-2 border-ink-black animate-progress-linear"
+            :style="{ animationDuration: `${totalDuration}s` }"
           />
         </div>
       </div>
@@ -140,7 +192,7 @@
           @click="onReturnLobby"
         >
           <RotateCcw class="w-5 h-5 mr-2" />
-          <span>Retourner au Lobby</span>
+          <span>Revanche / Retour au Lobby</span>
         </AppButton>
       </div>
 
@@ -149,14 +201,14 @@
         En attente du Master pour retourner au Lobby...
       </div>
       <div v-else-if="!gameStore.isGameOver && !isMaster" class="text-center font-display font-bold text-xs uppercase text-ink-black/70">
-        En attente du Master ou du compte à rebours...
+        En attente du Master ou du compte à rebours…
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { Trophy, Share2, RotateCcw, X, Clock, Play } from 'lucide-vue-next'
 import { useGameStore } from '~/stores/game'
 import { useRoomStore } from '~/stores/room'
@@ -174,39 +226,33 @@ const gameStore = useGameStore()
 const roomStore = useRoomStore()
 const copied = ref(false)
 
-const countdownRemaining = ref(10)
-const totalCountdown = ref(10)
-let timerId: any = null
-
-const startCountdown = (seconds: number) => {
-  if (timerId) clearInterval(timerId)
-  totalCountdown.value = seconds > 0 ? seconds : 10
-  countdownRemaining.value = totalCountdown.value
-  timerId = setInterval(() => {
-    if (countdownRemaining.value > 0) {
-      countdownRemaining.value -= 1
-    } else {
-      clearInterval(timerId)
-    }
-  }, 1000)
-}
+const countdownKey = ref(0)
+const countdownSeconds = ref(8)
+const totalDuration = ref(8)
+let secondInterval: any = null
 
 watch(() => gameStore.showRoundSummary, (shown) => {
   if (shown && !gameStore.isGameOver) {
-    const sec = gameStore.roundSummary?.countdown_sec || 10
-    startCountdown(sec)
+    const duration = gameStore.roundSummary?.countdown_sec || 8
+    totalDuration.value = duration
+    countdownSeconds.value = duration
+    countdownKey.value += 1
+
+    if (secondInterval) clearInterval(secondInterval)
+    secondInterval = setInterval(() => {
+      if (countdownSeconds.value > 0) {
+        countdownSeconds.value -= 1
+      } else {
+        clearInterval(secondInterval)
+      }
+    }, 1000)
   } else {
-    if (timerId) clearInterval(timerId)
+    if (secondInterval) clearInterval(secondInterval)
   }
 }, { immediate: true })
 
 onUnmounted(() => {
-  if (timerId) clearInterval(timerId)
-})
-
-const countdownPercent = computed(() => {
-  if (totalCountdown.value <= 0) return 0
-  return Math.min(100, Math.max(0, (countdownRemaining.value / totalCountdown.value) * 100))
+  if (secondInterval) clearInterval(secondInterval)
 })
 
 const targetLetters = computed(() => {
@@ -237,3 +283,20 @@ const copyEmojiGrid = async () => {
   }
 }
 </script>
+
+<style scoped>
+@keyframes progressBarLinear {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.animate-progress-linear {
+  animation-name: progressBarLinear;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+</style>
