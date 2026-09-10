@@ -96,9 +96,9 @@ func (h *Hub) Register(client *Client) {
 				Type:    "player:reconnected",
 				Payload: reconnectPayload,
 			})
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("🔄 %s s'est reconnecté", nickname))
+			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s s'est reconnecté", nickname))
 		} else {
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("👋 %s a rejoint la salle", nickname))
+			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a rejoint la salle", nickname))
 		}
 
 		// Envoi de l'historique du chat au nouveau client
@@ -145,7 +145,7 @@ func (h *Hub) Unregister(client *Client) {
 		if err == nil && !p.IsConnected {
 			// Le joueur ne s'est pas reconnecté dans le délai de grâce
 			_ = h.roomRepo.RemovePlayer(bgCtx, client.roomCode, client.userID)
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("🚶 %s a quitté la salle (délai de grâce expiré)", p.Nickname))
+			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle (délai de grâce expiré)", p.Nickname))
 			h.HandleMasterSuccession(client.roomCode, client.userID)
 
 			remaining, _ := h.roomRepo.GetPlayers(bgCtx, client.roomCode)
@@ -207,7 +207,7 @@ func (h *Hub) HandleMasterSuccession(roomCode string, departedUserID uuid.UUID) 
 
 	if newMaster != nil {
 		_ = h.roomRepo.UpdateRoomMaster(ctx, roomCode, newMaster.ID)
-		h.BroadcastSystemMessage(roomCode, fmt.Sprintf("👑 %s est maintenant le Master de la salle !", newMaster.Nickname))
+		h.BroadcastSystemMessage(roomCode, fmt.Sprintf("%s est maintenant le Master de la salle.", newMaster.Nickname))
 		h.SyncRoom(roomCode)
 	}
 }
@@ -374,7 +374,7 @@ func (h *Hub) handleKick(client *Client, payload json.RawMessage) {
 	h.roomsMu.RUnlock()
 
 	_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, body.TargetID)
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("👢 %s a été expulsé par le Master", name))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été expulsé par le Master.", name))
 	h.SyncRoom(client.roomCode)
 }
 
@@ -412,7 +412,7 @@ func (h *Hub) handleBan(client *Client, payload json.RawMessage) {
 	h.roomsMu.RUnlock()
 
 	_ = h.roomRepo.BanPlayer(ctx, client.roomCode, body.TargetID)
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("⛔ %s a été banni de la salle", name))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été banni de la salle.", name))
 	h.SyncRoom(client.roomCode)
 }
 
@@ -443,7 +443,7 @@ func (h *Hub) handleMute(client *Client, payload json.RawMessage) {
 	if !body.Mute {
 		action = "autorisé à parler"
 	}
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("🔇 %s a été %s par le Master", name, action))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été %s par le Master.", name, action))
 	h.SyncRoom(client.roomCode)
 }
 
@@ -467,7 +467,7 @@ func (h *Hub) handleRematch(client *Client) {
 		}
 	}
 
-	h.BroadcastSystemMessage(client.roomCode, "🔄 Le Master a relancé la salle en Lobby pour une revanche !")
+	h.BroadcastSystemMessage(client.roomCode, "Le Master a relancé la salle en Lobby pour une revanche.")
 	h.SyncRoom(client.roomCode)
 }
 
