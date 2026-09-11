@@ -115,15 +115,18 @@
             <div>
               <div class="font-display font-black text-sm uppercase text-ink-black">{{ player.nickname }}</div>
               <div class="font-condensed text-xs uppercase text-ink-black/70 flex items-center gap-2">
-                <span v-if="gameStore.roundSummary?.round_scores?.[player.id]">
-                  +{{ gameStore.roundSummary.round_scores[player.id] }} pts
+                <span
+                  class="font-black"
+                  :class="(gameStore.roundSummary?.round_scores?.[player.id] ?? 0) > 0 ? 'text-game-green' : 'text-ink-black/50'"
+                >
+                  +{{ gameStore.roundSummary?.round_scores?.[player.id] ?? 0 }} pts
                 </span>
-                <span v-else>0 pt</span>
                 <span
                   v-if="gameStore.roundSummary?.solve_times?.[player.id]"
-                  class="text-[11px] font-bold text-game-green bg-game-green/15 px-2 py-0.5 rounded-md border border-ink-black/30"
+                  class="text-[11px] font-bold text-game-green bg-game-green/15 px-2 py-0.5 rounded-md border border-ink-black/30 flex items-center gap-1"
                 >
-                  ⏱ {{ gameStore.roundSummary.solve_times[player.id] }}s
+                  <Clock class="w-3 h-3 text-game-green" />
+                  <span>{{ gameStore.roundSummary.solve_times[player.id] }}s</span>
                 </span>
               </div>
             </div>
@@ -132,10 +135,10 @@
           <!-- Score Total sur la piste -->
           <div class="text-right">
             <div class="text-game-blue font-condensed font-black text-xl">
-              {{ player.score }} pts
+              {{ (gameStore.roundSummary?.game_scores?.[player.id] ?? player.score) }} pts
             </div>
             <div class="text-[10px] font-display font-bold uppercase text-ink-black/60">
-              Total session
+              Total : {{ (gameStore.roundSummary?.game_scores?.[player.id] ?? player.score) }} pts
             </div>
           </div>
         </div>
@@ -159,19 +162,9 @@
         </div>
       </div>
 
-      <!-- Actions : Copier Émojis, Fermer & Commandes Master -->
+      <!-- Actions : Commandes Manche Suivante & Retour Lobby -->
       <div class="flex flex-col sm:flex-row gap-3 pt-2">
-        <AppButton
-          variant="neutral"
-          size="md"
-          class="flex-1"
-          @click="copyEmojiGrid"
-        >
-          <Share2 class="w-5 h-5 mr-2" />
-          <span>{{ copied ? 'Copié !' : 'Partager mes émojis' }}</span>
-        </AppButton>
-
-        <!-- Bouton Master : Lancer la manche suivante immédiatement -->
+        <!-- Bouton Master : Lancer la manche suivante immédiatement (RoundEnd) -->
         <AppButton
           v-if="!gameStore.isGameOver && isMaster"
           variant="success"
@@ -183,28 +176,16 @@
           <span>Lancer la manche suivante</span>
         </AppButton>
 
-        <!-- Bouton individuel : Retourner au Lobby (disponible pour tous en game_over) -->
+        <!-- Bouton Unique Pop Moderniste : Retourner au Lobby (GameOver) -->
         <AppButton
           v-if="gameStore.isGameOver"
           variant="primary"
-          size="md"
-          class="flex-1"
+          size="lg"
+          class="w-full text-base"
           @click="handleIndividualReturnLobby"
         >
           <RotateCcw class="w-5 h-5 mr-2" />
           <span>Retourner au Lobby</span>
-        </AppButton>
-
-        <!-- Bouton Master : Retour au Lobby pour tout le monde (si fin de partie) -->
-        <AppButton
-          v-if="gameStore.isGameOver && isMaster"
-          variant="success"
-          size="md"
-          class="flex-1"
-          @click="onReturnLobby"
-        >
-          <RotateCcw class="w-5 h-5 mr-2" />
-          <span>Revanche / Tous au Lobby</span>
         </AppButton>
       </div>
 
@@ -279,9 +260,6 @@ const targetLetters = computed(() => {
 
 const closeModal = () => {
   gameStore.showRoundSummary = false
-  if (gameStore.isGameOver && props.onIndividualReturnLobby) {
-    props.onIndividualReturnLobby()
-  }
 }
 
 const scoreboardPlayers = computed(() => {

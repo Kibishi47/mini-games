@@ -203,6 +203,19 @@ func (m *WordleGameManager) handleStartGame(ctx context.Context, client *ws.Clie
 }
 
 func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, roundNum int) {
+	// Annuler tout timer de prochaine manche précédent
+	m.roundTimersMu.Lock()
+	if timer, exists := m.nextRoundTimers[room.Code]; exists {
+		timer.Stop()
+		delete(m.nextRoundTimers, room.Code)
+	}
+	m.roundTimersMu.Unlock()
+
+	// Lors du début de la manche 1, réinitialiser les scores de la partie (game_points)
+	if roundNum == 1 {
+		_ = m.roomRepo.ResetGameScores(ctx, room.Code)
+	}
+
 	wordLen := room.Settings.WordLength
 	if wordLen < 3 || wordLen > 8 {
 		wordLen = 5
@@ -438,6 +451,7 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 		roundSolveTimes[uid.String()] = p.SolveTimeSec
 		if p.RoundScore > 0 {
 			_, _ = m.roomRepo.AddScore(ctx, roomCode, uid, p.RoundScore)
+			_, _ = m.roomRepo.AddGameScore(ctx, roomCode, uid, p.RoundScore)
 		}
 		if p.IsSolved && p.RoundScore > highestRoundScore {
 			highestRoundScore = p.RoundScore
@@ -458,6 +472,7 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 	})
 
 	allScores, _ := m.roomRepo.GetScores(ctx, roomCode)
+	gameScores, _ := m.roomRepo.GetGameScores(ctx, roomCode)
 
 	// Broadcaster la fin de manche avec RÉVÉLATION DU MOT et compte à rebours de 8s
 	countdownSec := 8
@@ -469,6 +484,7 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 		"winner_name":   winnerName,
 		"round_scores":  roundScoresMap,
 		"solve_times":   roundSolveTimes,
+		"game_scores":   gameScores,
 		"total_scores":  allScores,
 		"countdown_sec": countdownSec,
 	})

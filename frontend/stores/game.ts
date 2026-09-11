@@ -30,6 +30,7 @@ export interface RoundSummary {
   winner_name: string
   round_scores: Record<string, number>
   solve_times?: Record<string, number>
+  game_scores?: Record<string, number>
   total_scores: Record<string, number>
   countdown_sec?: number
 }
