@@ -51,18 +51,13 @@ Le projet adopte la philosophie des jeux viraux instantanés (type Skribbl.io ou
 * Docker et Docker Compose
 * Make
 
-### 1. Lancer l'environnement de production en local (ou Coolify)
-```bash
-make up
-```
-Cette commande unique :
-1. Démarre Redis 7, le Backend Go et le Frontend Nuxt.
-2. Rend le frontend disponible sur **http://localhost:3000** et l'API sur **http://localhost:8080**.
-
-### 2. Lancer l'environnement de développement avec Hot-Reload
+### Lancer l'environnement de développement avec Hot-Reload
 ```bash
 make dev
 ```
+Cette commande unique :
+1. Démarre Redis 7, le Backend Go (Air) et le Frontend Nuxt (Vite) en conteneurs.
+2. Rend le frontend disponible sur **http://localhost:3000** et l'API sur **http://localhost:8080** (personnalisables via `APP_PORT` / `FRONTEND_PORT` dans `.env`).
 * **Backend** : rechargé automatiquement à chaque modification Go via **Air**.
 * **Frontend** : HMR instantané via Nuxt 3 Vite.
 
@@ -76,26 +71,11 @@ make logs        # Affiche les logs en continu
 
 ---
 
-## 🌐 Déploiement Continu sur VPS avec Coolify
-
-Le projet est nativement configuré pour **Coolify** via `docker-compose.yml` (3 services orchestrés : `frontend`, `backend`, `redis`) :
-
-1. Sur votre instance Coolify, créez une nouvelle ressource **Docker Compose**.
-2. Liez ce dépôt GitHub (branche `dev` ou `main`).
-3. Renseignez les variables d'environnement dans l'interface Coolify (copiez depuis `.env.example`) :
-   * `FRONTEND_URL` (votre URL publique de frontend)
-   * `NUXT_PUBLIC_API_URL` (URL publique de l'API)
-   * `NUXT_PUBLIC_WS_URL` (URL publique WebSocket)
-4. Cliquez sur **Deploy** : Coolify compile les conteneurs, applique les healthchecks stricts et démarre les 3 services avec volume persistant `redis_data`.
-
----
-
 ## 🧪 Structure du Projet
 
 ```text
 .
 ├── Makefile                     # Commandes unifiées (make up, make dev, etc.)
-├── docker-compose.yml           # Déploiement production / Coolify (3 services)
 ├── docker-compose.dev.yml       # Environnement dev local avec Air et HMR
 ├── backend/
 │   ├── Dockerfile               # Build multi-stage Go Alpine avec dictionnaires

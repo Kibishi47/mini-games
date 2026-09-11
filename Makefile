@@ -1,27 +1,27 @@
-.PHONY: up dev down restart migrate seed logs test clean
+.PHONY: dev down restart migrate seed logs test clean
 
 # Variables
 DC_DEV = docker compose -f docker-compose.dev.yml
-DC_PROD = docker compose -f docker-compose.yml
 
-# Lance tout l'environnement de production en conteneurs
-up:
-	@echo "🚀 Démarrage de la stack de production (Coolify / Docker)..."
-	$(DC_PROD) up -d --build
-	@echo "✅ Plateforme prête !"
-	@echo "🌐 Frontend : http://localhost:3000"
-	@echo "⚙️ Backend API : http://localhost:8080"
+# Charge les variables du .env local si présent (docker compose le lit déjà nativement pour
+# ses propres ${VAR} ; on le reflète ici pour que les messages ci-dessous restent exacts)
+-include .env
+export
+
+APP_PORT ?= 8080
+FRONTEND_PORT ?= 3000
 
 # Lance l'environnement de développement (Redis Docker + Go Air + Nuxt dev)
 dev:
 	@echo "🛠️ Démarrage de l'environnement de développement..."
+	@echo "🌐 Frontend : http://localhost:$(FRONTEND_PORT)"
+	@echo "⚙️ Backend API : http://localhost:$(APP_PORT)"
 	$(DC_DEV) up --build
 
 # Arrête tous les conteneurs
 down:
 	@echo "🛑 Arrêt des services..."
 	$(DC_DEV) down -v --remove-orphans
-	$(DC_PROD) down -v --remove-orphans
 
 # Affiche les logs consolidés
 logs:
