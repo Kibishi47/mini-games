@@ -59,6 +59,18 @@ export function useWebSocket(roomCode: string) {
     ws.onclose = (event) => {
       isConnected.value = false
       
+      // Code 4003 : Joueur banni de la salle
+      if (event.code === 4003) {
+        isInitializing.value = false
+        if (reconnectTimer) clearTimeout(reconnectTimer)
+        profileStore.clearSession()
+        router.push({
+          path: '/',
+          query: { error: 'banned' },
+        })
+        return
+      }
+
       // Code 4004 : Room Not Found / Fermée pour inactivité
       if (event.code === 4004) {
         isInitializing.value = false

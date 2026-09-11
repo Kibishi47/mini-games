@@ -43,6 +43,10 @@ func (r *RoomRepository) scoresKey(code string) string {
 	return fmt.Sprintf("room:%s:scores", code)
 }
 
+func (r *RoomRepository) gameScoresKey(code string) string {
+	return fmt.Sprintf("room:%s:game_scores", code)
+}
+
 func (r *RoomRepository) historyKey(code string) string {
 	return fmt.Sprintf("room:%s:history", code)
 }
@@ -212,6 +216,7 @@ func (r *RoomRepository) UpdateRoomMaster(ctx context.Context, code string, newM
 			if p.ID == newMasterID {
 				p.Role = domain.RoleMaster
 				p.IsMaster = true
+				p.IsMuted = false // Immunité absolue du Master
 				b, _ := json.Marshal(p)
 				pipe.HSet(ctx, r.playersKey(code), p.ID.String(), string(b))
 			} else if p.IsMaster {
@@ -350,7 +355,12 @@ func (r *RoomRepository) SetPlayerMuted(ctx context.Context, code string, userID
 		return err
 	}
 
-	p.IsMuted = muted
+	// Immunité absolue du Master
+	if p.IsMaster {
+		p.IsMuted = false
+	} else {
+		p.IsMuted = muted
+	}
 	data, err := json.Marshal(p)
 	if err != nil {
 		return err
@@ -417,7 +427,7 @@ func (r *RoomRepository) SetAllPlayersLocation(ctx context.Context, code string,
 
 func (r *RoomRepository) ResetScores(ctx context.Context, code string) error {
 	pipe := r.client.Pipeline()
-	pipe.Del(ctx, r.scoresKey(code), r.historyKey(code))
+	pipe.Del(ctx, r.scoresKey(code), r.gameScoresKey(code), r.historyKey(code))
 
 	// Remettre à zéro le score de chaque joueur
 	players, err := r.GetPlayers(ctx, code)
@@ -435,9 +445,12 @@ func (r *RoomRepository) ResetScores(ctx context.Context, code string) error {
 	return err
 }
 
-func (r *RoomRepository) BanPlayer(ctx context.Context, code string, userID uuid.UUID) error {
+func (r *RoomRepository) BanPlayer(ctx context.Context, code string, userID uuid.UUID, token string) error {
 	pipe := r.client.Pipeline()
 	pipe.SAdd(ctx, r.bansKey(code), userID.String())
+	if token != "" {
+		pipe.SAdd(ctx, r.bansKey(code), token)
+	}
 	pipe.HDel(ctx, r.playersKey(code), userID.String())
 	pipe.Expire(ctx, r.bansKey(code), 4*time.Hour)
 	_, err := pipe.Exec(ctx)
@@ -446,6 +459,13 @@ func (r *RoomRepository) BanPlayer(ctx context.Context, code string, userID uuid
 
 func (r *RoomRepository) IsPlayerBanned(ctx context.Context, code string, userID uuid.UUID) (bool, error) {
 	return r.client.SIsMember(ctx, r.bansKey(code), userID.String()).Result()
+}
+
+func (r *RoomRepository) IsTokenBanned(ctx context.Context, code string, token string) (bool, error) {
+	if token == "" {
+		return false, nil
+	}
+	return r.client.SIsMember(ctx, r.bansKey(code), token).Result()
 }
 
 // -----------------------------------------------------------------------------
@@ -472,6 +492,32 @@ func (r *RoomRepository) AddScore(ctx context.Context, code string, userID uuid.
 
 func (r *RoomRepository) GetScores(ctx context.Context, code string) (map[string]int, error) {
 	scores, err := r.client.ZRevRangeWithScores(ctx, r.scoresKey(code), 0, -1).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]int, len(scores))
+	for _, z := range scores {
+		res[fmt.Sprint(z.Member)] = int(z.Score)
+	}
+	return res, nil
+}
+
+func (r *RoomRepository) ResetGameScores(ctx context.Context, code string) error {
+	return r.client.Del(ctx, r.gameScoresKey(code)).Err()
+}
+
+func (r *RoomRepository) AddGameScore(ctx context.Context, code string, userID uuid.UUID, points int) (int, error) {
+	newScore, err := r.client.ZIncrBy(ctx, r.gameScoresKey(code), float64(points), userID.String()).Result()
+	if err != nil {
+		return 0, err
+	}
+	r.client.Expire(ctx, r.gameScoresKey(code), 4*time.Hour)
+	return int(newScore), nil
+}
+
+func (r *RoomRepository) GetGameScores(ctx context.Context, code string) (map[string]int, error) {
+	scores, err := r.client.ZRevRangeWithScores(ctx, r.gameScoresKey(code), 0, -1).Result()
 	if err != nil {
 		return nil, err
 	}

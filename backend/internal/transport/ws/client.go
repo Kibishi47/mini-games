@@ -147,12 +147,16 @@ func (c *Client) SendError(message string) {
 }
 
 func (c *Client) Close() {
+	c.CloseWithCode(websocket.StatusNormalClosure, "Fermeture normale")
+}
+
+func (c *Client) CloseWithCode(code websocket.StatusCode, reason string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if !c.isClosed {
 		c.isClosed = true
 		close(c.sendChan)
-		_ = c.conn.Close(websocket.StatusNormalClosure, "Fermeture normale")
+		_ = c.conn.Close(code, reason)
 	}
 }

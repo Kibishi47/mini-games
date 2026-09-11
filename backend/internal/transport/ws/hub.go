@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"nhooyr.io/websocket"
 
 	"minigames-backend/internal/domain"
 	"minigames-backend/internal/repository/redis"
@@ -499,19 +500,21 @@ func (h *Hub) handleBan(client *Client, payload json.RawMessage) {
 		name = targetPlayer.Nickname
 	}
 
+	var targetToken string
 	h.roomsMu.RLock()
 	if clients, ok := h.roomClients[client.roomCode]; ok {
 		if targetClient, found := clients[body.TargetID]; found {
+			targetToken = targetClient.SessionToken()
 			targetClient.SendError("Vous avez été banni de la salle par le Master")
 			go func(c *Client) {
-				time.Sleep(200 * time.Millisecond)
-				c.Close()
+				time.Sleep(150 * time.Millisecond)
+				c.CloseWithCode(websocket.StatusCode(4003), "Banned")
 			}(targetClient)
 		}
 	}
 	h.roomsMu.RUnlock()
 
-	_ = h.roomRepo.BanPlayer(ctx, client.roomCode, body.TargetID)
+	_ = h.roomRepo.BanPlayer(ctx, client.roomCode, body.TargetID, targetToken)
 	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été banni de la salle.", name))
 	h.SyncRoom(client.roomCode)
 }

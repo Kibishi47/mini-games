@@ -128,6 +128,19 @@ func (h *RoomHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 0bis. Vérifier si le token est banni de cette salle
+	if tokenStr != "" {
+		if isBanned, _ := h.roomRepo.IsTokenBanned(ctx, roomCode, tokenStr); isBanned {
+			conn, acceptErr := websocket.Accept(w, r, &websocket.AcceptOptions{
+				InsecureSkipVerify: true,
+			})
+			if acceptErr == nil {
+				_ = conn.Close(websocket.StatusCode(4003), "Banned")
+			}
+			return
+		}
+	}
+
 	var userID uuid.UUID
 	var sessionData *domain.SessionData
 
@@ -138,6 +151,16 @@ func (h *RoomHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	if sessionData != nil && sessionData.RoomCode == roomCode {
 		userID = sessionData.UserID
+		// Vérifier si l'utilisateur est banni
+		if isBanned, _ := h.roomRepo.IsPlayerBanned(ctx, roomCode, userID); isBanned {
+			conn, acceptErr := websocket.Accept(w, r, &websocket.AcceptOptions{
+				InsecureSkipVerify: true,
+			})
+			if acceptErr == nil {
+				_ = conn.Close(websocket.StatusCode(4003), "Banned")
+			}
+			return
+		}
 	} else {
 		// 2. Si pas de token ou expiré, créer un nouvel ID pour ce client
 		nickname := r.URL.Query().Get("nickname")
