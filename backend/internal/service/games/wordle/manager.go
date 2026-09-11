@@ -66,7 +66,6 @@ func NewWordleGameManager(
 		activeRounds:    make(map[string]*RoundState),
 		nextRoundTimers: make(map[string]*time.Timer),
 	}
-	hub.SetGameHandler(mgr)
 	return mgr
 }
 

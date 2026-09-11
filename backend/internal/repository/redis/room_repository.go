@@ -490,6 +490,22 @@ func (r *RoomRepository) AddScore(ctx context.Context, code string, userID uuid.
 	return int(newScore), nil
 }
 
+// SetPlayerScore fixe le score affiché d'un joueur à une valeur absolue (ex: tapis de jetons au poker)
+func (r *RoomRepository) SetPlayerScore(ctx context.Context, code string, userID uuid.UUID, score int) error {
+	p, err := r.GetPlayer(ctx, code, userID)
+	if err != nil {
+		return err
+	}
+
+	p.Score = score
+	data, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+
+	return r.client.HSet(ctx, r.playersKey(code), userID.String(), string(data)).Err()
+}
+
 func (r *RoomRepository) GetScores(ctx context.Context, code string) (map[string]int, error) {
 	scores, err := r.client.ZRevRangeWithScores(ctx, r.scoresKey(code), 0, -1).Result()
 	if err != nil {

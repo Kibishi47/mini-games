@@ -51,21 +51,31 @@
             <Copy v-else class="w-3.5 h-3.5 text-ink-black/60" />
           </button>
 
-          <!-- Si en jeu : Statut Manche / Chrono + Bouton Master Arrêter la partie -->
+          <!-- Si en jeu : Statut Manche / Chrono (ou Main / Pot au poker) + Bouton Master Arrêter la partie -->
           <template v-if="currentView === 'game'">
             <div class="hidden md:flex items-center space-x-2">
-              <div class="border-2 border-ink-black px-2.5 py-1 rounded-xl bg-game-yellow font-condensed font-black text-xs uppercase shadow-pop-xs">
-                Manche {{ gameStore.currentRound }}/{{ gameStore.maxRounds }}
-              </div>
-              <div
-                :class="[
-                  'flex items-center space-x-1 border-2 border-ink-black px-2.5 py-1 rounded-xl font-condensed font-black text-xs uppercase shadow-pop-xs',
-                  remainingSeconds <= 10 ? 'bg-game-red text-board-white animate-pulse' : 'bg-board-white text-ink-black'
-                ]"
-              >
-                <Clock class="w-3.5 h-3.5" />
-                <span>{{ remainingSeconds }}s</span>
-              </div>
+              <template v-if="isPoker">
+                <div class="border-2 border-ink-black px-2.5 py-1 rounded-xl bg-game-yellow font-condensed font-black text-xs uppercase shadow-pop-xs">
+                  Main {{ pokerStore.table?.hand_num || 1 }}
+                </div>
+                <div class="border-2 border-ink-black px-2.5 py-1 rounded-xl bg-board-white font-condensed font-black text-xs uppercase shadow-pop-xs">
+                  Pot : {{ pokerStore.table?.pot || 0 }}
+                </div>
+              </template>
+              <template v-else>
+                <div class="border-2 border-ink-black px-2.5 py-1 rounded-xl bg-game-yellow font-condensed font-black text-xs uppercase shadow-pop-xs">
+                  Manche {{ gameStore.currentRound }}/{{ gameStore.maxRounds }}
+                </div>
+                <div
+                  :class="[
+                    'flex items-center space-x-1 border-2 border-ink-black px-2.5 py-1 rounded-xl font-condensed font-black text-xs uppercase shadow-pop-xs',
+                    remainingSeconds <= 10 ? 'bg-game-red text-board-white animate-pulse' : 'bg-board-white text-ink-black'
+                  ]"
+                >
+                  <Clock class="w-3.5 h-3.5" />
+                  <span>{{ remainingSeconds }}s</span>
+                </div>
+              </template>
               <AppButton
                 v-if="roomStore.isMaster"
                 variant="danger"
@@ -150,7 +160,55 @@
             </div>
 
             <!-- Paramètres de la Salle (Modifiables par le Master) -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div v-if="isPoker" class="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+              <!-- Tapis de Départ -->
+              <div class="p-3 bg-board-cream rounded-xl border-2 border-ink-black">
+                <label class="block font-display font-bold text-[10px] uppercase text-ink-black/60 mb-1">
+                  Tapis de Départ
+                </label>
+                <select
+                  :disabled="!roomStore.isMaster"
+                  :value="roomStore.currentRoom?.settings?.starting_chips || 1000"
+                  @change="onStartingChipsChange($event)"
+                  class="w-full bg-board-white border-2 border-ink-black rounded-lg px-2 py-1 font-condensed font-black text-sm uppercase disabled:opacity-60"
+                >
+                  <option :value="500">500 Jetons</option>
+                  <option :value="1000">1000 Jetons (Standard)</option>
+                  <option :value="2500">2500 Jetons</option>
+                  <option :value="5000">5000 Jetons</option>
+                </select>
+              </div>
+
+              <!-- Petite Blinde -->
+              <div class="p-3 bg-board-cream rounded-xl border-2 border-ink-black">
+                <label class="block font-display font-bold text-[10px] uppercase text-ink-black/60 mb-1">
+                  Petite Blinde
+                </label>
+                <select
+                  :disabled="!roomStore.isMaster"
+                  :value="roomStore.currentRoom?.settings?.small_blind || 25"
+                  @change="onSmallBlindChange($event)"
+                  class="w-full bg-board-white border-2 border-ink-black rounded-lg px-2 py-1 font-condensed font-black text-sm uppercase disabled:opacity-60"
+                >
+                  <option :value="5">5 Jetons</option>
+                  <option :value="10">10 Jetons</option>
+                  <option :value="25">25 Jetons (Standard)</option>
+                  <option :value="50">50 Jetons</option>
+                </select>
+              </div>
+
+              <!-- Grosse Blinde (lecture seule, toujours 2x la petite blinde) -->
+              <div class="p-3 bg-board-cream rounded-xl border-2 border-ink-black">
+                <label class="block font-display font-bold text-[10px] uppercase text-ink-black/60 mb-1">
+                  Grosse Blinde
+                </label>
+                <div class="w-full bg-board-white border-2 border-ink-black rounded-lg px-2 py-1.5 font-condensed font-black text-sm uppercase text-ink-black/70">
+                  {{ (roomStore.currentRoom?.settings?.small_blind || 25) * 2 }} Jetons
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <!-- Longueur du Mot -->
               <div class="p-3 bg-board-cream rounded-xl border-2 border-ink-black">
                 <label class="block font-display font-bold text-[10px] uppercase text-ink-black/60 mb-1">
@@ -235,7 +293,7 @@
                 @click="handleStartGame"
               >
                 <Play class="w-6 h-6 mr-3 fill-current" />
-                <span>Lancer la Partie de Wordle !</span>
+                <span>{{ isPoker ? 'Lancer la Partie de Poker !' : 'Lancer la Partie de Wordle !' }}</span>
               </AppButton>
               <div v-else class="text-center p-3 bg-board-cream border-2 border-ink-black rounded-xl font-display font-bold text-sm uppercase text-ink-black/70 flex items-center justify-center gap-2">
                 <Clock class="w-4 h-4 text-ink-black/60" />
@@ -321,7 +379,40 @@
         </div>
       </div>
 
-      <!-- 2. VUE EN JEU (Architecture 2 Colonnes : Plateau à gauche, Chat + Adversaires à droite) -->
+      <!-- 2. VUE EN JEU POKER (Table dédiée, pleine largeur, chat repositionné en dessous) -->
+      <div v-else-if="currentView === 'game' && isPoker" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div class="lg:col-span-8 space-y-6">
+          <AppCard variant="white" shadow="lg" class="p-6 space-y-4">
+            <div v-if="roomStore.me?.is_spectator" class="p-3 bg-game-pink border-2 border-ink-black rounded-xl text-center font-display font-black text-xs uppercase shadow-pop-xs flex items-center justify-center gap-2">
+              <AlertTriangle class="w-4 h-4 text-ink-black" />
+              <span>Vous observez la partie. Vous serez servi à la prochaine main !</span>
+            </div>
+
+            <PokerTable :on-action="handlePokerAction" />
+
+            <!-- Bandeau persistant quand la partie de poker est terminée -->
+            <div
+              v-if="roomStore.currentRoom?.round_state === 'game_over'"
+              class="p-4 bg-game-yellow/20 border-2 border-ink-black rounded-2xl flex items-center justify-between shadow-pop-xs"
+            >
+              <div class="flex items-center space-x-2">
+                <Trophy class="w-5 h-5 text-ink-black" />
+                <span class="font-display font-black text-sm uppercase text-ink-black">Partie terminée !</span>
+              </div>
+              <AppButton variant="primary" size="sm" @click="handleLocalReturnToLobby">
+                <RotateCcw class="w-4 h-4 mr-1.5" />
+                <span>Retourner au Lobby</span>
+              </AppButton>
+            </div>
+          </AppCard>
+        </div>
+
+        <div class="lg:col-span-4 space-y-6">
+          <ChatPanel :on-send="sendChatMessage" height="h-[460px]" />
+        </div>
+      </div>
+
+      <!-- 2bis. VUE EN JEU WORDLE (Architecture 2 Colonnes : Plateau à gauche, Chat + Adversaires à droite) -->
       <div v-else-if="currentView === 'game'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <!-- Colonne Gauche (8 cols) : Plateau Wordle et Clavier -->
         <div class="lg:col-span-8 space-y-6">
@@ -382,8 +473,9 @@
       </div>
     </main>
 
-    <!-- Modal de Fin de Manche / Fin de Partie avec Scoreboard -->
+    <!-- Modal de Fin de Manche / Fin de Partie avec Scoreboard (Wordle uniquement) -->
     <ScoreboardModal
+      v-if="!isPoker"
       :is-master="roomStore.isMaster"
       :on-rematch="rematch"
       :on-return-lobby="handleLocalReturnToLobby"
@@ -404,6 +496,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
 import { useGameStore } from '~/stores/game'
+import { usePokerStore } from '~/stores/poker'
 import { useWebSocket } from '~/composables/useWebSocket'
 import { useConfirm } from '~/composables/useConfirm'
 
@@ -414,6 +507,7 @@ import GameMascot from '~/components/ui/GameMascot.vue'
 import ChatPanel from '~/components/chat/ChatPanel.vue'
 import WordleGrid from '~/components/wordle/WordleGrid.vue'
 import OpponentPreview from '~/components/wordle/OpponentPreview.vue'
+import PokerTable from '~/components/poker/PokerTable.vue'
 import ScoreboardModal from '~/components/scoreboard/ScoreboardModal.vue'
 import AppConfirmModal from '~/components/ui/AppConfirmModal.vue'
 
@@ -424,7 +518,10 @@ const roomCode = computed(() => String(route.params.code || '').toUpperCase())
 const profileStore = useProfileStore()
 const roomStore = useRoomStore()
 const gameStore = useGameStore()
+const pokerStore = usePokerStore()
 const { confirm } = useConfirm()
+
+const isPoker = computed(() => roomStore.currentRoom?.settings?.game_type === 'poker')
 
 // Initialisation immédiate du profil avant la connexion WS
 profileStore.initProfile()
@@ -448,6 +545,7 @@ const {
   banPlayer: wsBanPlayer,
   mutePlayer,
   rematch,
+  sendPokerAction,
 } = useWebSocket(roomCode.value)
 
 // Vue active : 'lobby' ou 'game' (pilotage individuel)
@@ -556,6 +654,10 @@ const handleStartGame = async () => {
   startGame()
 }
 
+const handlePokerAction = (action: string, amount = 0) => {
+  sendPokerAction(action, amount)
+}
+
 const masterPlayer = computed(() => roomStore.masterPlayer)
 
 // Compte à rebours absolu
@@ -641,6 +743,24 @@ const onMaxAttemptsChange = (e: Event) => {
   updateSettings({
     ...(roomStore.currentRoom?.settings || {}),
     max_attempts: val,
+  })
+}
+
+// Mise à jour des paramètres Poker par le Master
+const onStartingChipsChange = (e: Event) => {
+  const val = parseInt((e.target as HTMLSelectElement).value, 10)
+  updateSettings({
+    ...(roomStore.currentRoom?.settings || {}),
+    starting_chips: val,
+  })
+}
+
+const onSmallBlindChange = (e: Event) => {
+  const val = parseInt((e.target as HTMLSelectElement).value, 10)
+  updateSettings({
+    ...(roomStore.currentRoom?.settings || {}),
+    small_blind: val,
+    big_blind: val * 2,
   })
 }
 </script>

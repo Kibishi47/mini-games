@@ -51,13 +51,23 @@ type RoomPlayer struct {
 
 // RoomSettings configure la salle de jeu
 type RoomSettings struct {
-	GameType      string `json:"game_type"`      // "wordle"
-	WordLength    int    `json:"word_length"`    // 3 à 8 (défaut 5)
-	RoundDuration int    `json:"round_duration"` // secondes (défaut 60)
-	MaxRounds     int    `json:"max_rounds"`     // manches (défaut 3)
-	MaxAttempts   int    `json:"max_attempts"`   // essais max (défaut 6)
+	GameType      string `json:"game_type"`      // "wordle" | "poker"
+	WordLength    int    `json:"word_length"`    // 3 à 8 (défaut 5) — Wordle uniquement
+	RoundDuration int    `json:"round_duration"` // secondes (défaut 60) — Wordle uniquement
+	MaxRounds     int    `json:"max_rounds"`     // manches (défaut 3) — Wordle uniquement
+	MaxAttempts   int    `json:"max_attempts"`   // essais max (défaut 6) — Wordle uniquement
 	Language      string `json:"language"`       // "fr"
+
+	// Paramètres Texas Hold'em — Poker uniquement
+	StartingChips int `json:"starting_chips"` // tapis de départ (défaut 1000)
+	SmallBlind    int `json:"small_blind"`    // petite blinde (défaut 25)
+	BigBlind      int `json:"big_blind"`      // grosse blinde (défaut 50)
 }
+
+const (
+	GameTypeWordle = "wordle"
+	GameTypePoker  = "poker"
+)
 
 // Room représente l'état global d'une salle
 type Room struct {

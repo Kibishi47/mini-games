@@ -25,6 +25,9 @@ export interface RoomSettings {
   max_rounds: number
   max_attempts: number
   language: string
+  starting_chips: number
+  small_blind: number
+  big_blind: number
 }
 
 export type RoundSubState = 'playing' | 'round_ended' | 'game_over'
@@ -81,6 +84,12 @@ export const useRoomStore = defineStore('room', {
   actions: {
     setRoom(room: Room) {
       this.currentRoom = room
+    },
+
+    updateStatus(status: RoomStatus) {
+      if (this.currentRoom) {
+        this.currentRoom.status = status
+      }
     },
 
     addChatMessage(msg: ChatMessage) {

@@ -396,17 +396,32 @@ func (h *Hub) handleUpdateSettings(client *Client, payload json.RawMessage) {
 		return
 	}
 
-	if settings.WordLength < 3 || settings.WordLength > 8 {
-		settings.WordLength = 5
-	}
-	if settings.RoundDuration < 30 || settings.RoundDuration > 120 {
-		settings.RoundDuration = 60
-	}
-	if settings.MaxRounds < 1 || settings.MaxRounds > 7 {
-		settings.MaxRounds = 3
-	}
-	if settings.MaxAttempts < 5 || settings.MaxAttempts > 7 {
-		settings.MaxAttempts = 6
+	// Le type de jeu est figé à la création de la salle et ne peut pas être changé en cours de route
+	settings.GameType = room.Settings.GameType
+
+	if settings.GameType == domain.GameTypePoker {
+		if settings.StartingChips < 100 || settings.StartingChips > 1000000 {
+			settings.StartingChips = 1000
+		}
+		if settings.SmallBlind < 1 || settings.SmallBlind > settings.StartingChips/2 {
+			settings.SmallBlind = 25
+		}
+		if settings.BigBlind < settings.SmallBlind*2 || settings.BigBlind > settings.StartingChips {
+			settings.BigBlind = settings.SmallBlind * 2
+		}
+	} else {
+		if settings.WordLength < 3 || settings.WordLength > 8 {
+			settings.WordLength = 5
+		}
+		if settings.RoundDuration < 30 || settings.RoundDuration > 120 {
+			settings.RoundDuration = 60
+		}
+		if settings.MaxRounds < 1 || settings.MaxRounds > 7 {
+			settings.MaxRounds = 3
+		}
+		if settings.MaxAttempts < 5 || settings.MaxAttempts > 7 {
+			settings.MaxAttempts = 6
+		}
 	}
 
 	_ = h.roomRepo.UpdateRoomSettings(ctx, client.roomCode, settings)

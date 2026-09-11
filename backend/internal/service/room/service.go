@@ -69,15 +69,38 @@ func (s *RoomService) CreateRoom(ctx context.Context, nickname, mascot, color st
 	code := s.GenerateRoomCode()
 	masterID := uuid.New()
 
+	gameType := domain.GameTypeWordle
+	if settings != nil && settings.GameType == domain.GameTypePoker {
+		gameType = domain.GameTypePoker
+	}
+
 	st := domain.RoomSettings{
-		GameType:      "wordle",
+		GameType:      gameType,
 		WordLength:    5,
 		RoundDuration: 60,
 		MaxRounds:     3,
 		MaxAttempts:   6,
 		Language:      "fr",
+		StartingChips: 1000,
+		SmallBlind:    25,
+		BigBlind:      50,
 	}
-	if settings != nil {
+
+	if gameType == domain.GameTypePoker {
+		if settings != nil {
+			if settings.StartingChips >= 100 && settings.StartingChips <= 1000000 {
+				st.StartingChips = settings.StartingChips
+			}
+			if settings.SmallBlind >= 1 && settings.SmallBlind <= st.StartingChips/2 {
+				st.SmallBlind = settings.SmallBlind
+			}
+			if settings.BigBlind >= st.SmallBlind*2 && settings.BigBlind <= st.StartingChips {
+				st.BigBlind = settings.BigBlind
+			} else {
+				st.BigBlind = st.SmallBlind * 2
+			}
+		}
+	} else if settings != nil {
 		if settings.WordLength >= 3 && settings.WordLength <= 8 {
 			st.WordLength = settings.WordLength
 		}

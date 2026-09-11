@@ -17,7 +17,7 @@
               </span>
             </div>
             <span class="block text-[11px] font-display font-bold uppercase tracking-widest text-game-blue">
-              Wordle Multijoueur Desktop (3 à 8 Lettres)
+              Wordle & Poker Multijoueur Desktop
             </span>
           </div>
         </div>
@@ -142,8 +142,41 @@
               <AppBadge variant="master">Gratuit & Instantané</AppBadge>
             </div>
 
+            <!-- Choix du Mini-Jeu -->
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                @click="selectedGameType = 'wordle'"
+                :class="[
+                  'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none',
+                  selectedGameType === 'wordle' ? 'bg-board-white shadow-pop-sm scale-[1.02] z-10' : 'bg-board-cream/60 hover:bg-board-white shadow-pop-xs'
+                ]"
+              >
+                <Type class="w-6 h-6 text-game-blue" />
+                <span class="font-display font-black text-sm uppercase mt-1.5">Wordle</span>
+                <span class="text-[10px] font-body text-ink-black/60 text-center">Mot mystère en manches chronométrées</span>
+              </button>
+              <button
+                type="button"
+                @click="selectedGameType = 'poker'"
+                :class="[
+                  'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none',
+                  selectedGameType === 'poker' ? 'bg-board-white shadow-pop-sm scale-[1.02] z-10' : 'bg-board-cream/60 hover:bg-board-white shadow-pop-xs'
+                ]"
+              >
+                <Spade class="w-6 h-6 text-ink-black fill-ink-black" />
+                <span class="font-display font-black text-sm uppercase mt-1.5">Poker</span>
+                <span class="text-[10px] font-body text-ink-black/60 text-center">Texas Hold'em jetons & blindes</span>
+              </button>
+            </div>
+
             <p class="font-body text-sm text-ink-black/80">
-              Invite tes amis dans ton salon de jeu de société personnalisé. Tu seras désigné <strong>Master</strong> pour lancer les manches de 3 à 8 lettres à ta convenance.
+              <template v-if="selectedGameType === 'poker'">
+                Invite tes amis pour une partie de <strong>Texas Hold'em</strong> ! Tu seras désigné <strong>Master</strong> pour lancer les mains et régler les blindes.
+              </template>
+              <template v-else>
+                Invite tes amis dans ton salon de jeu de société personnalisé. Tu seras désigné <strong>Master</strong> pour lancer les manches de 3 à 8 lettres à ta convenance.
+              </template>
             </p>
 
             <AppButton
@@ -207,7 +240,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { UserCircle, Sparkles, Play, LogIn, AlertTriangle, X } from 'lucide-vue-next'
+import { UserCircle, Sparkles, Play, LogIn, AlertTriangle, X, Type, Spade } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore, MASCOTS } from '~/stores/profile'
 import type { MascotName } from '~/components/ui/GameMascot.vue'
@@ -224,6 +257,7 @@ const router = useRouter()
 
 const inputNickname = ref('')
 const inputRoomCode = ref('')
+const selectedGameType = ref<'wordle' | 'poker'>('wordle')
 const isLoading = ref(false)
 const errorMessage = ref('')
 const closedRoomAlert = ref(false)
@@ -264,6 +298,9 @@ const handleCreateRoom = async () => {
         nickname: profileStore.nickname,
         mascot: profileStore.mascot,
         color: profileStore.color,
+        settings: {
+          game_type: selectedGameType.value,
+        },
       },
     })
 

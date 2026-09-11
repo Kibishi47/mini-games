@@ -2,11 +2,13 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
 import { useGameStore } from '~/stores/game'
+import { usePokerStore } from '~/stores/poker'
 
 export function useWebSocket(roomCode: string) {
   const profileStore = useProfileStore()
   const roomStore = useRoomStore()
   const gameStore = useGameStore()
+  const pokerStore = usePokerStore()
   const config = useRuntimeConfig()
   const router = useRouter()
 
@@ -99,8 +101,11 @@ export function useWebSocket(roomCode: string) {
         roomStore.setRoom(payload)
         isInitializing.value = false
 
-        // Synchroniser l'état de manche lors d'un F5 / reconnexion
-        if (payload?.status === 'in_game') {
+        // Synchroniser l'état de manche lors d'un F5 / reconnexion (spécifique au moteur Wordle ;
+        // le poker gère son propre état via les messages "poker:state" / "poker:hand_end")
+        if (payload?.settings?.game_type === 'poker') {
+          // rien à faire ici : PokerTable se resynchronise via game:get_state à la connexion
+        } else if (payload?.status === 'in_game') {
           if (payload?.round_state === 'round_ended') {
             gameStore.currentRound = payload.current_round || 1
             gameStore.targetWord = payload.revealed_word || ''
@@ -133,6 +138,7 @@ export function useWebSocket(roomCode: string) {
           gameStore.showRoundSummary = false
           gameStore.isGameOver = false
           gameStore.viewMode = 'lobby'
+          pokerStore.reset()
         }
         break
 
@@ -143,8 +149,17 @@ export function useWebSocket(roomCode: string) {
             gameStore.showRoundSummary = false
             gameStore.isGameOver = false
             gameStore.viewMode = 'lobby'
+            pokerStore.reset()
           }
         }
+        break
+
+      case 'poker:state':
+        pokerStore.syncState(payload)
+        break
+
+      case 'poker:hand_end':
+        pokerStore.handleHandEnd(payload)
         break
 
       case 'player:reconnected':
@@ -264,6 +279,10 @@ export function useWebSocket(roomCode: string) {
     send('game:next_round', {})
   }
 
+  const sendPokerAction = (action: string, amount = 0) => {
+    send('game:poker_action', { action, amount })
+  }
+
   onMounted(() => {
     connect()
   })
@@ -295,5 +314,6 @@ export function useWebSocket(roomCode: string) {
     banPlayer,
     mutePlayer,
     rematch,
+    sendPokerAction,
   }
 }

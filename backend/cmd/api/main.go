@@ -15,7 +15,10 @@ import (
 	"github.com/go-chi/cors"
 
 	"minigames-backend/internal/config"
+	"minigames-backend/internal/domain"
 	"minigames-backend/internal/repository/redis"
+	"minigames-backend/internal/service/games"
+	"minigames-backend/internal/service/games/poker"
 	"minigames-backend/internal/service/games/wordle"
 	"minigames-backend/internal/service/room"
 	transportHttp "minigames-backend/internal/transport/http"
@@ -46,9 +49,16 @@ func main() {
 	dict := wordle.NewDictionary()
 	log.Printf("📚 Dictionnaire Wordle initialisé : %d cibles canoniques, %d mots autorisés", dict.TargetsCount(), dict.AllowedCount())
 
-	// Initialisation WebSocket Hub & Gestionnaire de Jeu Wordle
+	// Initialisation WebSocket Hub & Gestionnaires de Jeu (Wordle + Poker) via un Router unique
 	wsHub := ws.NewHub(roomRepo)
-	_ = wordle.NewWordleGameManager(dict, wsHub, roomRepo, redisClient)
+	wordleMgr := wordle.NewWordleGameManager(dict, wsHub, roomRepo, redisClient)
+	pokerMgr := poker.NewPokerGameManager(wsHub, roomRepo)
+
+	gameRouter := games.NewRouter(roomRepo)
+	gameRouter.Register(domain.GameTypeWordle, wordleMgr)
+	gameRouter.Register(domain.GameTypePoker, pokerMgr)
+	wsHub.SetGameHandler(gameRouter)
+	log.Println("🃏 Moteur de Poker Texas Hold'em initialisé")
 
 	// Initialisation Workers d'inactivité AFK et GC de salles
 	workerMgr := worker.NewWorkerManager(roomRepo, wsHub)
