@@ -52,7 +52,7 @@
           </button>
 
           <!-- Si en jeu : Statut Manche / Chrono + Bouton Master Arrêter la partie -->
-          <template v-if="roomStore.currentRoom?.status === 'in_game'">
+          <template v-if="currentView === 'game'">
             <div class="hidden md:flex items-center space-x-2">
               <div class="border-2 border-ink-black px-2.5 py-1 rounded-xl bg-game-yellow font-condensed font-black text-xs uppercase shadow-pop-xs">
                 Manche {{ gameStore.currentRound }}/{{ gameStore.maxRounds }}
@@ -125,7 +125,7 @@
     <!-- Corps Principal Dynamique (Lobby vs In Game) -->
     <main class="max-w-7xl mx-auto px-6 py-6 flex-1 w-full">
       <!-- 1. VUE LOBBY (En attente du lancement par le Master) -->
-      <div v-if="roomStore.currentRoom?.status === 'in_lobby'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div v-if="currentView === 'lobby'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div class="lg:col-span-8 space-y-6">
           <!-- Bannière Lobby Pop -->
           <AppCard variant="white" shadow="lg" class="space-y-4">
@@ -276,7 +276,7 @@
                       <span>{{ p.nickname }}</span>
                       <Crown v-if="p.is_master" class="w-4 h-4 text-game-yellow fill-game-yellow inline-block" title="Master" />
                       <AppBadge v-if="p.location === 'in_game'" variant="neutral" class="ml-1 text-[10px] px-2 py-0">
-                        Sur le score
+                        En jeu
                       </AppBadge>
                     </div>
                     <span class="text-[10px] font-condensed uppercase text-ink-black/60">
@@ -322,7 +322,7 @@
       </div>
 
       <!-- 2. VUE EN JEU (Architecture 2 Colonnes : Plateau à gauche, Chat + Adversaires à droite) -->
-      <div v-else-if="roomStore.currentRoom?.status === 'in_game'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div v-else-if="currentView === 'game'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <!-- Colonne Gauche (8 cols) : Plateau Wordle et Clavier -->
         <div class="lg:col-span-8 space-y-6">
           <AppCard variant="white" shadow="lg" class="p-6">
@@ -359,7 +359,7 @@
               <AppButton
                 variant="primary"
                 size="sm"
-                @click="returnToLobby"
+                @click="handleLocalReturnToLobby"
               >
                 <RotateCcw class="w-4 h-4 mr-1.5" />
                 <span>Retourner au Lobby</span>
@@ -386,9 +386,10 @@
     <ScoreboardModal
       :is-master="roomStore.isMaster"
       :on-rematch="rematch"
-      :on-return-lobby="returnToLobby"
-      :on-individual-return-lobby="handleReturnLobby"
+      :on-return-lobby="handleLocalReturnToLobby"
+      :on-individual-return-lobby="handleLocalReturnToLobby"
       :on-next-round="nextRound"
+      @return-to-lobby="handleLocalReturnToLobby"
     />
 
     <!-- Modale de Confirmation Pop Moderniste -->
@@ -449,18 +450,37 @@ const {
   rematch,
 } = useWebSocket(roomCode.value)
 
-// Retour au lobby propre : mise à jour immédiate du store local et envoi au serveur
-const handleReturnLobby = () => {
+// Vue active : 'lobby' ou 'game' (pilotage individuel)
+const currentView = ref<'lobby' | 'game'>('lobby')
+
+// Retour au lobby propre et strictement individuel : mise à jour locale immédiate et émission player:return_lobby
+const handleLocalReturnToLobby = () => {
+  currentView.value = 'lobby'
   gameStore.returnToLobbyView()
-  returnToLobby()
+  wsReturnLobby()
 }
 
-// Fermer automatiquement la modale de fin de partie dès qu'on revient au lobby
-watch(() => roomStore.currentRoom?.status, (newStatus) => {
-  if (newStatus === 'in_lobby') {
-    gameStore.returnToLobbyView()
-  }
-})
+// Synchronisation de la vue avec les transitions globales de partie
+watch(
+  () => [roomStore.currentRoom?.status, roomStore.currentRoom?.round_state, roomStore.me?.location],
+  ([status, roundState, myLocation]) => {
+    if (status === 'in_game' && roundState === 'playing') {
+      currentView.value = 'game'
+    } else if (status === 'in_lobby') {
+      currentView.value = 'lobby'
+      gameStore.returnToLobbyView()
+    } else if (status === 'in_game' && roundState === 'game_over') {
+      // Lors d'une reconnexion / F5 en game_over : vérifier la localisation individuelle
+      if (myLocation === 'lobby') {
+        currentView.value = 'lobby'
+        gameStore.returnToLobbyView()
+      } else {
+        currentView.value = 'game'
+      }
+    }
+  },
+  { immediate: true }
+)
 
 const confirmStopGame = async () => {
   const ok = await confirm({

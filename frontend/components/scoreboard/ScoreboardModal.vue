@@ -182,7 +182,7 @@
           variant="primary"
           size="lg"
           class="w-full text-base"
-          @click="handleIndividualReturnLobby"
+          @click="handleReturnToLobby"
         >
           <RotateCcw class="w-5 h-5 mr-2" />
           <span>Retourner au Lobby</span>
@@ -213,17 +213,22 @@ const props = defineProps<{
   onNextRound?: () => void
 }>()
 
+const emit = defineEmits<{
+  (e: 'return-to-lobby'): void
+}>()
+
 const gameStore = useGameStore()
 const roomStore = useRoomStore()
 const copied = ref(false)
 
-const handleIndividualReturnLobby = () => {
+const handleReturnToLobby = () => {
   gameStore.showRoundSummary = false
-  if (props.onReturnLobby) {
-    props.onReturnLobby()
-  } else if (props.onIndividualReturnLobby) {
+  if (props.onIndividualReturnLobby) {
     props.onIndividualReturnLobby()
+  } else if (props.onReturnLobby) {
+    props.onReturnLobby()
   }
+  emit('return-to-lobby')
 }
 
 const countdownKey = ref(0)
