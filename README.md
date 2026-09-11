@@ -1,6 +1,6 @@
-# 🎮 MiniGames - Plateforme Multijoueur Temps Réel (Wordle)
+# 🎮 MiniGames - Plateforme Multijoueur Temps Réel (Wordle & Poker)
 
-Plateforme web desktop de jeux multijoueur compétitifs en temps réel avec moteur **Server-Authoritative** ultra-robuste en **Go 1.23+**, interface réactive en **Nuxt 3**, et état temps réel **100% Redis 7**.
+Plateforme web desktop de jeux multijoueur compétitifs en temps réel avec moteur **Server-Authoritative** ultra-robuste en **Go 1.23+**, interface réactive en **Nuxt 3**, et état temps réel **100% Redis 7**. Deux mini-jeux sont disponibles à la création d'une salle : **Wordle** (mot mystère en manches chronométrées) et **Poker Texas Hold'em** (jetons, blindes, side pots).
 
 Le projet adopte la philosophie des jeux viraux instantanés (type Skribbl.io ou Codenames) : **zéro compte, zéro mot de passe, zéro base de données SQL**. Tout repose sur un mode Invité (Guest) persistant localement sur le client, un état temps réel ultra-rapide géré dans Redis, et un binaire Go compilé ultra-léger.
 
@@ -17,6 +17,11 @@ Le projet adopte la philosophie des jeux viraux instantanés (type Skribbl.io ou
   * **State Masking strict** : les tuiles des concurrents sont diffusées en direct sans les lettres (couleurs uniquement).
   * **Chronomètre absolu (`ends_at`)** : compte à rebours client précis insensible à la latence réseau.
   * **Partage viral émojis** (🟩🟨⬛) copiable en 1 clic.
+* **Moteur Server-Authoritative Poker Texas Hold'em** :
+  * Distribution des cartes, blindes tournantes, tours de mise (pré-flop/flop/turn/river) avec ordre d'action standard (heads-up compris).
+  * Fold / Check / Call / Bet / Raise / All-in, **side pots** calculés automatiquement pour les tapis courts.
+  * Abattage server-side avec évaluateur de main à 7 cartes (quinte flush → carte haute) et répartition des gains.
+  * Timer de 20s par joueur avec fold/check automatique en cas d'inactivité, élimination des joueurs ruinés.
 * **Résilience & Reconnexion (Grace Period)** :
   * **Période de grâce de 45 secondes** : tolérance aux rechargements de page (F5) et micro-coupures réseau grâce aux sessions éphémères Redis avec TTL de 45s.
   * **Mode Spectateur automatique** : tout joueur arrivant en cours de manche observe et intègre automatiquement la manche suivante.
@@ -101,7 +106,9 @@ Le projet est nativement configuré pour **Coolify** via `docker-compose.yml` (3
 │       ├── domain/              # Modèles métier & structures d'événements
 │       ├── repository/redis/    # Implémentation Redis (rooms, sessions, chat)
 │       ├── service/room/        # Logique de salon & gouvernance
+│       ├── service/games/       # Router générique (aiguille selon room.settings.game_type)
 │       ├── service/games/wordle/# Moteur Wordle (3-8 lettres, //go:embed)
+│       ├── service/games/poker/ # Moteur Poker Texas Hold'em (deck, évaluateur, mises, side pots)
 │       ├── transport/http/      # Handlers REST légers
 │       ├── transport/ws/        # Hub WebSocket, dispatch & heartbeat
 │       └── worker/              # Workers d'inactivité et garbage collector
@@ -113,8 +120,9 @@ Le projet est nativement configuré pour **Coolify** via `docker-compose.yml` (3
     ├── components/
     │   ├── ui/                  # AppButton, AppCard, AppBadge, AppInput, GameMascot
     │   ├── wordle/              # WordleGrid, OpponentPreview
+    │   ├── poker/               # PlayingCard, PokerSeat, PokerControls, PokerTable
     │   ├── chat/                # ChatPanel
-    │   └── scoreboard/          # ScoreboardModal
-    ├── stores/                  # Stores Pinia (profile, room, game)
+    │   └── scoreboard/          # ScoreboardModal (Wordle)
+    ├── stores/                  # Stores Pinia (profile, room, game, poker)
     └── composables/             # useWebSocket
 ```
