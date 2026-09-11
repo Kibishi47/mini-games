@@ -462,16 +462,18 @@ const handleLocalReturnToLobby = () => {
 
 // Synchronisation de la vue avec les transitions globales de partie
 watch(
-  () => [roomStore.currentRoom?.status, roomStore.currentRoom?.round_state, roomStore.me?.location],
-  ([status, roundState, myLocation]) => {
-    if (status === 'in_game' && roundState === 'playing') {
+  () => [roomStore.currentRoom?.status, roomStore.currentRoom?.round_state, roomStore.me?.location, gameStore.viewMode],
+  ([status, roundState, myLocation, gViewMode]) => {
+    if (gViewMode === 'game') {
+      currentView.value = 'game'
+    } else if (status === 'in_game' && roundState === 'playing') {
       currentView.value = 'game'
     } else if (status === 'in_lobby') {
       currentView.value = 'lobby'
       gameStore.returnToLobbyView()
     } else if (status === 'in_game' && roundState === 'game_over') {
       // Lors d'une reconnexion / F5 en game_over : vérifier la localisation individuelle
-      if (myLocation === 'lobby') {
+      if (myLocation === 'lobby' || gViewMode === 'lobby') {
         currentView.value = 'lobby'
         gameStore.returnToLobbyView()
       } else {

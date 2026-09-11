@@ -529,6 +529,33 @@ func (r *RoomRepository) GetGameScores(ctx context.Context, code string) (map[st
 	return res, nil
 }
 
+func (r *RoomRepository) roundScoresKey(code string, roundNum int) string {
+	return fmt.Sprintf("room:%s:round:%d:scores", code, roundNum)
+}
+
+func (r *RoomRepository) SetRoundScore(ctx context.Context, code string, roundNum int, userID uuid.UUID, score int) error {
+	key := r.roundScoresKey(code, roundNum)
+	err := r.client.HSet(ctx, key, userID.String(), score).Err()
+	if err == nil {
+		r.client.Expire(ctx, key, 4*time.Hour)
+	}
+	return err
+}
+
+func (r *RoomRepository) GetRoundScores(ctx context.Context, code string, roundNum int) (map[string]int, error) {
+	key := r.roundScoresKey(code, roundNum)
+	data, err := r.client.HGetAll(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[string]int, len(data))
+	for k, v := range data {
+		val, _ := strconv.Atoi(v)
+		res[k] = val
+	}
+	return res, nil
+}
+
 // -----------------------------------------------------------------------------
 // HISTORIQUE DES MANCHES
 // -----------------------------------------------------------------------------

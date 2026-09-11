@@ -159,6 +159,7 @@ export function useWebSocket(roomCode: string) {
         roomStore.addChatMessage(payload)
         break
 
+      case 'game:started':
       case 'game:round_start':
         gameStore.startRound(payload)
         break

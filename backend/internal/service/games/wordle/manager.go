@@ -30,6 +30,7 @@ type PlayerRoundState struct {
 }
 
 type RoundState struct {
+	RoundNum    int                             `json:"round_num"`
 	TargetWord  string                          `json:"target_word"` // SECRET ABSOLU SERVEUR
 	WordLength  int                             `json:"word_length"`
 	MaxAttempts int                             `json:"max_attempts"`
@@ -191,7 +192,11 @@ func (m *WordleGameManager) handleStartGame(ctx context.Context, client *ws.Clie
 		return
 	}
 
-	if room.Status == domain.RoomStatusInGame {
+	// Le Master a le droit de lancer une partie si :
+	// - room.Status == "in_lobby"
+	// - OU room.Status == "in_game" && room.RoundState == "game_over"
+	isGameOver := room.Status == domain.RoomStatusInGame && room.RoundState == domain.RoundSubStateGameOver
+	if room.Status != domain.RoomStatusInLobby && !isGameOver {
 		client.SendError("La partie est déjà en cours")
 		return
 	}
@@ -232,6 +237,7 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 	players, _ := m.roomRepo.GetPlayers(ctx, room.Code)
 
 	roundState := &RoundState{
+		RoundNum:    roundNum,
 		TargetWord:  targetWord,
 		WordLength:  wordLen,
 		MaxAttempts: room.Settings.MaxAttempts,
@@ -277,6 +283,21 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 		"ends_at":        endsAt.Format(time.RFC3339),
 		"round_duration": int(duration.Seconds()),
 	})
+
+	// Si c'est le début d'une nouvelle partie (manche 1), broadcaster room:state_changed et game:started
+	if roundNum == 1 {
+		statePayload, _ := json.Marshal(map[string]interface{}{
+			"status": domain.RoomStatusInGame,
+		})
+		m.hub.BroadcastToRoom(room.Code, domain.WSMessage{
+			Type:    "room:state_changed",
+			Payload: statePayload,
+		})
+		m.hub.BroadcastToRoom(room.Code, domain.WSMessage{
+			Type:    "game:started",
+			Payload: startPayload,
+		})
+	}
 
 	m.hub.BroadcastToRoom(room.Code, domain.WSMessage{
 		Type:    "game:round_start",
@@ -366,7 +387,12 @@ func (m *WordleGameManager) handleGuess(ctx context.Context, client *ws.Client, 
 		playerState.IsSolved = false
 		playerState.RoundScore = 0
 	}
+	rScore := playerState.RoundScore
+	rNum := round.RoundNum
 	m.mu.Unlock()
+
+	// Persister immédiatement le score de manche dans Redis
+	_ = m.roomRepo.SetRoundScore(ctx, client.RoomCode(), rNum, client.UserID(), rScore)
 
 	// 1. Envoyer le résultat complet (avec lettres) au joueur qui a deviné
 	playerData, _ := json.Marshal(map[string]interface{}{
@@ -432,6 +458,9 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 		return
 	}
 
+	// Récupérer les scores persistés dans Redis pour cette manche
+	persistedRoundScores, _ := m.roomRepo.GetRoundScores(ctx, roomCode, room.CurrentRound)
+
 	// Mise à jour des scores dans Redis
 	roundScoresMap := make(map[string]int)
 	roundSolveTimes := make(map[string]int)
@@ -440,14 +469,18 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 	highestRoundScore := -1
 
 	for uid, p := range round.Players {
-		roundScoresMap[uid.String()] = p.RoundScore
-		roundSolveTimes[uid.String()] = p.SolveTimeSec
-		if p.RoundScore > 0 {
-			_, _ = m.roomRepo.AddScore(ctx, roomCode, uid, p.RoundScore)
-			_, _ = m.roomRepo.AddGameScore(ctx, roomCode, uid, p.RoundScore)
+		score := p.RoundScore
+		if redisScore, ok := persistedRoundScores[uid.String()]; ok && redisScore > score {
+			score = redisScore
 		}
-		if p.IsSolved && p.RoundScore > highestRoundScore {
-			highestRoundScore = p.RoundScore
+		roundScoresMap[uid.String()] = score
+		roundSolveTimes[uid.String()] = p.SolveTimeSec
+		if score > 0 {
+			_, _ = m.roomRepo.AddScore(ctx, roomCode, uid, score)
+			_, _ = m.roomRepo.AddGameScore(ctx, roomCode, uid, score)
+		}
+		if p.IsSolved && score > highestRoundScore {
+			highestRoundScore = score
 			wID := uid
 			winnerID = &wID
 			winnerName = p.Nickname
