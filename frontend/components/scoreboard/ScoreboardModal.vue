@@ -259,7 +259,11 @@ const targetLetters = computed(() => {
 })
 
 const closeModal = () => {
-  gameStore.showRoundSummary = false
+  if (gameStore.isGameOver) {
+    gameStore.dismissGameOver()
+  } else {
+    gameStore.showRoundSummary = false
+  }
 }
 
 const scoreboardPlayers = computed(() => {

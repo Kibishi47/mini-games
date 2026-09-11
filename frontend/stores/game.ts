@@ -20,6 +20,8 @@ export interface OpponentProgress {
   is_solved: boolean
   is_finished: boolean
   attempts_cnt: number
+  round_score?: number
+  total_score?: number
 }
 
 export interface RoundSummary {
@@ -61,6 +63,8 @@ export const useGameStore = defineStore('game', {
     roundSummary: null as RoundSummary | null,
     isGameOver: false,
     showRoundSummary: false,
+    isGameOverDismissed: false,
+    viewMode: 'lobby' as 'lobby' | 'game',
   }),
 
   getters: {
@@ -115,6 +119,8 @@ export const useGameStore = defineStore('game', {
       this.targetWord = ''
       this.showRoundSummary = false
       this.isGameOver = false
+      this.isGameOverDismissed = false
+      this.viewMode = 'game'
     },
 
     setGuessResult(payload: { attempts: TileEvaluation[][]; is_solved: boolean; is_finished: boolean; round_score: number }) {
@@ -137,8 +143,21 @@ export const useGameStore = defineStore('game', {
     endRound(payload: RoundSummary) {
       this.roundSummary = payload
       this.targetWord = payload.secret_word
-      this.showRoundSummary = true
       this.isGameOver = payload.round >= this.maxRounds
+      if (!this.isGameOverDismissed && this.viewMode !== 'lobby') {
+        this.showRoundSummary = true
+      }
+    },
+
+    dismissGameOver() {
+      this.isGameOverDismissed = true
+      this.showRoundSummary = false
+    },
+
+    returnToLobbyView() {
+      this.viewMode = 'lobby'
+      this.showRoundSummary = false
+      this.isGameOverDismissed = true
     },
 
     syncGameState(payload: any) {

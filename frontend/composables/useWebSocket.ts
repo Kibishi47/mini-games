@@ -123,7 +123,9 @@ export function useWebSocket(roomCode: string) {
             gameStore.currentRound = payload.current_round || 3
             gameStore.targetWord = payload.revealed_word || ''
             gameStore.isGameOver = true
-            gameStore.showRoundSummary = true
+            if (!gameStore.isGameOverDismissed && gameStore.viewMode !== 'lobby') {
+              gameStore.showRoundSummary = true
+            }
           } else if (payload?.round_state === 'playing') {
             gameStore.showRoundSummary = false
           }
