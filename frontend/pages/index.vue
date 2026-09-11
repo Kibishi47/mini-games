@@ -39,6 +39,19 @@
         </div>
       </div>
     </header>
+    <!-- Message d'alerte Pop Moderniste si joueur banni -->
+    <div v-if="bannedAlert" class="max-w-2xl mx-auto mt-6 px-6 w-full">
+      <div class="bg-game-red text-board-white font-display font-black text-sm px-6 py-3.5 rounded-2xl border-[3.5px] border-ink-black shadow-pop-md flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <AlertTriangle class="w-6 h-6 text-game-yellow flex-shrink-0" />
+          <span>Vous avez été banni de cette salle par le Master.</span>
+        </div>
+        <button @click="bannedAlert = false" class="text-board-white hover:text-ink-black font-black text-base ml-4 cursor-pointer">
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+
     <!-- Message d'alerte Pop Moderniste si salle fermée ou expirée -->
     <div v-if="closedRoomAlert" class="max-w-2xl mx-auto mt-6 px-6 w-full">
       <div class="bg-game-yellow text-ink-black font-display font-black text-sm px-6 py-3.5 rounded-2xl border-[3.5px] border-ink-black shadow-pop-md flex items-center justify-between">
@@ -46,8 +59,8 @@
           <AlertTriangle class="w-6 h-6 text-game-red flex-shrink-0" />
           <span>Cette room n'existe plus ou a été fermée pour inactivité.</span>
         </div>
-        <button @click="closedRoomAlert = false" class="text-ink-black hover:text-game-red font-black text-base ml-4">
-          ✕
+        <button @click="closedRoomAlert = false" class="text-ink-black hover:text-game-red font-black text-base ml-4 cursor-pointer">
+          <X class="w-5 h-5" />
         </button>
       </div>
     </div>
@@ -175,8 +188,9 @@
               </div>
             </form>
 
-            <div v-if="errorMessage" class="p-3 bg-game-red/10 border-2 border-game-red rounded-xl text-game-red font-display font-bold text-xs uppercase text-center">
-              ⚠️ {{ errorMessage }}
+            <div v-if="errorMessage" class="p-3 bg-game-red/10 border-2 border-game-red rounded-xl text-game-red font-display font-bold text-xs uppercase text-center flex items-center justify-center gap-2">
+              <AlertTriangle class="w-4 h-4 text-game-red" />
+              <span>{{ errorMessage }}</span>
             </div>
           </AppCard>
         </div>
@@ -185,15 +199,15 @@
     </main>
 
     <!-- Footer Pop Festival -->
-    <footer class="border-t-[3px] border-ink-black bg-board-white py-4 px-6 text-center text-xs font-display font-bold uppercase tracking-wider text-ink-black/60">
-      MiniGames — 100% In-Memory & Redis 7 — Moteur Wordle Server-Authoritative Pop Moderniste
+    <footer class="border-t-[3px] border-ink-black bg-board-white py-4 px-6 text-center text-xs text-ink-black/60 font-body font-bold uppercase tracking-widest">
+      MINIGAMES — Festival Pop Moderniste de Jeux de Mots
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { UserCircle, Sparkles, Play, LogIn, AlertTriangle } from 'lucide-vue-next'
+import { UserCircle, Sparkles, Play, LogIn, AlertTriangle, X } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore, MASCOTS } from '~/stores/profile'
 import type { MascotName } from '~/components/ui/GameMascot.vue'
@@ -213,12 +227,15 @@ const inputRoomCode = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
 const closedRoomAlert = ref(false)
+const bannedAlert = ref(false)
 
 onMounted(() => {
   profileStore.initProfile()
   inputNickname.value = profileStore.nickname
   if (route.query.error === 'room_closed') {
     closedRoomAlert.value = true
+  } else if (route.query.error === 'banned') {
+    bannedAlert.value = true
   }
 })
 

@@ -18,56 +18,70 @@
   </div>
 
   <div v-else class="min-h-screen bg-board-cream text-ink-black flex flex-col justify-between selection:bg-game-yellow selection:text-ink-black">
-    <!-- Navbar Salle Pop Moderniste -->
+    <!-- Navbar Salle Pop Moderniste (3 blocs équilibrés) -->
     <header class="border-b-[4px] border-ink-black bg-board-white sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-6 h-20 py-3 flex items-center justify-between">
         
-        <!-- Logo & Code de la Salle -->
-        <div class="flex items-center space-x-4 cursor-pointer" @click="navigateTo('/')">
+        <!-- Bloc Gauche : Logo / Titre MINIGAMES + Badge Pop FESTIVAL -->
+        <div class="flex items-center space-x-3 cursor-pointer" @click="navigateTo('/')">
           <GameMascot name="dice" mood="running" size="sm" />
-          <div class="flex items-center space-x-3">
-            <span class="font-display font-black text-2xl tracking-tight text-ink-black uppercase">
-              MiniGames
+          <span class="font-display font-black text-2xl tracking-tight text-ink-black uppercase">
+            MiniGames
+          </span>
+          <AppBadge variant="system" class="hidden sm:inline-flex text-[10px] font-black">
+            Festival
+          </AppBadge>
+        </div>
+
+        <!-- Bloc Centre : Cartouche Code de Salle cliquable (avec feedback visuel 'Copié !') + Statut Manche si en jeu -->
+        <div class="flex items-center space-x-3">
+          <button
+            @click="copyRoomCode"
+            type="button"
+            class="flex items-center space-x-2 border-2 border-ink-black bg-board-cream hover:bg-board-white px-3.5 py-1.5 rounded-xl shadow-pop-xs active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-none cursor-pointer"
+            :title="isCopied ? 'Code copié dans le presse-papier !' : 'Cliquer pour copier le code de la salle'"
+          >
+            <span class="font-condensed font-black text-sm tracking-widest uppercase text-game-blue">
+              {{ roomCode }}
             </span>
-            <div class="flex items-center space-x-2 border-2 border-ink-black bg-board-cream px-3 py-1 rounded-xl shadow-pop-xs" @click.stop="copyRoomCode">
-              <span class="font-condensed font-black text-sm tracking-widest uppercase text-game-blue">
-                {{ roomCode }}
-              </span>
-              <Copy class="w-3.5 h-3.5 text-ink-black/60" />
+            <span v-if="isCopied" class="flex items-center text-xs font-condensed font-black uppercase text-game-green gap-1">
+              <Check class="w-3.5 h-3.5 stroke-[3]" />
+              <span>Copié !</span>
+            </span>
+            <Copy v-else class="w-3.5 h-3.5 text-ink-black/60" />
+          </button>
+
+          <!-- Si en jeu : Statut Manche / Chrono + Bouton Master Arrêter la partie -->
+          <template v-if="roomStore.currentRoom?.status === 'in_game'">
+            <div class="hidden md:flex items-center space-x-2">
+              <div class="border-2 border-ink-black px-2.5 py-1 rounded-xl bg-game-yellow font-condensed font-black text-xs uppercase shadow-pop-xs">
+                Manche {{ gameStore.currentRound }}/{{ gameStore.maxRounds }}
+              </div>
+              <div
+                :class="[
+                  'flex items-center space-x-1 border-2 border-ink-black px-2.5 py-1 rounded-xl font-condensed font-black text-xs uppercase shadow-pop-xs',
+                  remainingSeconds <= 10 ? 'bg-game-red text-board-white animate-pulse' : 'bg-board-white text-ink-black'
+                ]"
+              >
+                <Clock class="w-3.5 h-3.5" />
+                <span>{{ remainingSeconds }}s</span>
+              </div>
+              <AppButton
+                v-if="roomStore.isMaster"
+                variant="danger"
+                size="sm"
+                class="hidden lg:inline-flex text-xs px-2.5 py-1"
+                @click="confirmStopGame"
+                title="Arrêter la partie et retourner au lobby"
+              >
+                <Square class="w-3.5 h-3.5 mr-1 fill-current" />
+                <span>Arrêter</span>
+              </AppButton>
             </div>
-          </div>
+          </template>
         </div>
 
-        <!-- Statut Manche / Chronomètre si En Jeu + Bouton Master Arrêter la partie -->
-        <div v-if="roomStore.currentRoom?.status === 'in_game'" class="flex items-center space-x-3">
-          <div class="border-2 border-ink-black px-3 py-1 rounded-xl bg-game-yellow font-condensed font-black text-sm uppercase shadow-pop-xs">
-            Manche {{ gameStore.currentRound }}/{{ gameStore.maxRounds }}
-          </div>
-          <div
-            :class="[
-              'flex items-center space-x-1.5 border-2 border-ink-black px-3 py-1 rounded-xl font-condensed font-black text-base uppercase shadow-pop-xs',
-              remainingSeconds <= 10 ? 'bg-game-red text-board-white animate-pulse' : 'bg-board-white text-ink-black'
-            ]"
-          >
-            <Clock class="w-4 h-4" />
-            <span>{{ remainingSeconds }}s</span>
-          </div>
-
-          <!-- Bouton Master : Arrêter la partie immédiatement -->
-          <AppButton
-            v-if="roomStore.isMaster"
-            variant="danger"
-            size="sm"
-            class="hidden sm:inline-flex"
-            @click="confirmStopGame"
-            title="Arrêter la partie et retourner au lobby"
-          >
-            <Square class="w-4 h-4 mr-1.5 fill-current" />
-            <span>Arrêter la partie</span>
-          </AppButton>
-        </div>
-
-        <!-- Profil Joueur Connecté & Quitter -->
+        <!-- Bloc Droit : Profil Joueur Connecté (Mascotte + Pseudo + Badge MASTER) & Bouton Quitter -->
         <div class="flex items-center space-x-3">
           <div class="flex items-center space-x-2 border-2 border-ink-black bg-board-white px-3 py-1.5 rounded-xl shadow-pop-xs">
             <ClientOnly>
@@ -78,11 +92,12 @@
               </template>
             </ClientOnly>
             <div class="text-left">
-              <div class="font-display font-black text-xs uppercase text-ink-black leading-tight">
-                {{ profileStore.nickname }}
+              <div class="font-display font-black text-xs uppercase text-ink-black leading-tight flex items-center gap-1">
+                <span>{{ profileStore.nickname }}</span>
               </div>
-              <span v-if="roomStore.isMaster" class="text-[9px] font-condensed uppercase text-game-blue font-black block">
-                Master
+              <span v-if="roomStore.isMaster" class="text-[9px] font-condensed uppercase text-game-blue font-black flex items-center gap-0.5">
+                <Crown class="w-2.5 h-2.5 text-game-yellow fill-game-yellow" />
+                <span>Master</span>
               </span>
               <span v-else-if="roomStore.me?.is_spectator" class="text-[9px] font-condensed uppercase text-ink-black/60 font-black block">
                 Spectateur
@@ -93,7 +108,7 @@
           <button
             @click="leaveRoom"
             title="Quitter la salle"
-            class="p-2 border-2 border-ink-black bg-board-cream hover:bg-game-red hover:text-board-white rounded-xl shadow-pop-xs active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-none"
+            class="p-2 border-2 border-ink-black bg-board-cream hover:bg-game-red hover:text-board-white rounded-xl shadow-pop-xs active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-none cursor-pointer"
           >
             <LogOut class="w-4 h-4" />
           </button>
@@ -226,8 +241,9 @@
                   <Play class="w-6 h-6 mr-3 fill-current" />
                   <span>Lancer la Partie de Wordle !</span>
                 </AppButton>
-                <div v-else class="text-center p-3 bg-board-cream border-2 border-ink-black rounded-xl font-display font-bold text-sm uppercase text-ink-black/70">
-                  ⏳ En attente que le Master (<strong>{{ masterPlayer?.nickname }}</strong>) lance la partie...
+                <div v-else class="text-center p-3 bg-board-cream border-2 border-ink-black rounded-xl font-display font-bold text-sm uppercase text-ink-black/70 flex items-center justify-center gap-2">
+                  <Clock class="w-4 h-4 text-ink-black/60" />
+                  <span>En attente que le Master (<strong>{{ masterPlayer?.nickname }}</strong>) lance la partie...</span>
                 </div>
               </div>
             </AppCard>
@@ -248,7 +264,6 @@
                     <RotateCcw class="w-3.5 h-3.5 mr-1" />
                     <span>Réinitialiser les scores</span>
                   </AppButton>
-                  <span class="text-xs text-ink-black/50 font-body">Code : {{ roomCode }}</span>
                 </div>
               </h2>
 
@@ -263,7 +278,7 @@
                     <div>
                       <div class="font-display font-black text-sm uppercase text-ink-black flex items-center space-x-1.5">
                         <span>{{ p.nickname }}</span>
-                        <span v-if="p.is_master" title="Master">👑</span>
+                        <Crown v-if="p.is_master" class="w-4 h-4 text-game-yellow fill-game-yellow inline-block" title="Master" />
                         <AppBadge v-if="p.location === 'in_game'" variant="neutral" class="ml-1 text-[10px] px-2 py-0">
                           Sur le score
                         </AppBadge>
@@ -308,41 +323,43 @@
           <div v-else-if="roomStore.currentRoom?.status === 'in_game'" class="space-y-6">
             <AppCard variant="white" shadow="lg" class="p-6">
               <!-- Mode Spectateur Banner -->
-              <div v-if="roomStore.me?.is_spectator" class="mb-4 p-3 bg-game-pink border-2 border-ink-black rounded-xl text-center font-display font-black text-xs uppercase shadow-pop-xs">
-                👀 Vous observez la manche en cours. Vous participerez activement à la manche suivante !
+              <div v-if="roomStore.me?.is_spectator" class="mb-4 p-3 bg-game-pink border-2 border-ink-black rounded-xl text-center font-display font-black text-xs uppercase shadow-pop-xs flex items-center justify-center gap-2">
+                <AlertTriangle class="w-4 h-4 text-ink-black" />
+                <span>Vous observez la manche en cours. Vous participerez activement à la manche suivante !</span>
               </div>
 
               <!-- Message de réussite personnelle -->
-              <div v-if="gameStore.isSolved" class="mb-4 p-3 bg-game-green text-board-white border-2 border-ink-black rounded-xl text-center font-display font-black text-sm uppercase shadow-pop-xs">
-                🎉 Bravo ! Vous avez trouvé le mot en {{ gameStore.myAttempts.length }} coup(s) (+{{ gameStore.myRoundScore }} pts) !
+              <div v-if="gameStore.isSolved" class="mb-4 p-3 bg-game-green text-board-white border-2 border-ink-black rounded-xl text-center font-display font-black text-sm uppercase shadow-pop-xs flex items-center justify-center gap-2">
+                <Trophy class="w-5 h-5 text-board-white" />
+                <span>Bravo ! Vous avez trouvé le mot en {{ gameStore.myAttempts.length }} coup(s) (+{{ gameStore.myRoundScore }} pts) !</span>
               </div>
 
               <!-- Message d'échec personnel -->
-              <div v-else-if="gameStore.isFinished" class="mb-4 p-3 bg-game-red text-board-white border-2 border-ink-black rounded-xl text-center font-display font-black text-sm uppercase shadow-pop-xs">
-                💀 Échec pour cette manche ! En attente des autres joueurs...
+              <div v-else-if="gameStore.isFinished" class="mb-4 p-3 bg-game-red text-board-white border-2 border-ink-black rounded-xl text-center font-display font-black text-sm uppercase shadow-pop-xs flex items-center justify-center gap-2">
+                <AlertTriangle class="w-5 h-5 text-board-white" />
+                <span>Échec pour cette manche ! En attente des autres joueurs...</span>
               </div>
 
               <!-- Plateau et Clavier Wordle -->
               <WordleGrid :on-submit="submitGuess" />
 
-              <!-- Barre de secours et navigation de secours (Failsafe) -->
-              <div class="mt-6 pt-4 border-t-2 border-ink-black/20 flex flex-wrap items-center justify-between gap-3">
-                <button
-                  @click="leaveRoom"
-                  class="font-display font-bold text-xs uppercase text-ink-black/60 hover:text-game-red flex items-center gap-1.5 transition-none"
+              <!-- Bandeau persistant quand la partie est terminée et que la modale est masquée -->
+              <div
+                v-if="gameStore.isGameOver && !gameStore.showRoundSummary"
+                class="mt-6 p-4 bg-game-yellow/20 border-2 border-ink-black rounded-2xl flex items-center justify-between shadow-pop-xs"
+              >
+                <div class="flex items-center space-x-2">
+                  <Trophy class="w-5 h-5 text-ink-black" />
+                  <span class="font-display font-black text-sm uppercase text-ink-black">Partie terminée !</span>
+                </div>
+                <AppButton
+                  variant="primary"
+                  size="sm"
+                  @click="returnLobby"
                 >
-                  <LogOut class="w-4 h-4" />
-                  <span>Quitter la partie</span>
-                </button>
-
-                <button
-                  v-if="roomStore.isMaster"
-                  @click="confirmStopGame"
-                  class="font-display font-black text-xs uppercase text-game-red hover:underline flex items-center gap-1.5"
-                >
-                  <Square class="w-3.5 h-3.5 fill-current" />
-                  <span>Arrêter la partie et revenir au Lobby</span>
-                </button>
+                  <RotateCcw class="w-4 h-4 mr-1.5" />
+                  <span>Retourner au Lobby</span>
+                </AppButton>
               </div>
             </AppCard>
           </div>
@@ -350,9 +367,9 @@
         </div>
 
         <!-- ================= Colonne Droite (Concurrents en direct & Chat) ================= -->
-        <div class="lg:col-span-4 space-y-6">
+        <div class="lg:col-span-4 h-[calc(100vh-7rem)] flex flex-col space-y-4 min-h-[500px]">
           <!-- Adversaires en Direct (si en jeu) -->
-          <div v-if="roomStore.currentRoom?.status === 'in_game'">
+          <div v-if="roomStore.currentRoom?.status === 'in_game'" class="max-h-56 overflow-y-auto flex-shrink-0">
             <OpponentPreview
               :opponents="gameStore.opponents"
               :max-attempts="gameStore.maxAttempts"
@@ -360,7 +377,7 @@
           </div>
 
           <!-- Chat Gazette du Festival -->
-          <div class="h-[520px]">
+          <div class="flex-1 min-h-0">
             <ChatPanel :on-send="sendChatMessage" />
           </div>
         </div>
@@ -381,7 +398,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { Copy, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square, RotateCcw } from 'lucide-vue-next'
+import { Copy, Check, Crown, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square, RotateCcw } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
@@ -481,10 +498,17 @@ onUnmounted(() => {
   if (timerInterval) clearInterval(timerInterval)
 })
 
+const isCopied = ref(false)
+let copyTimeout: any = null
+
 const copyRoomCode = async () => {
   try {
     await navigator.clipboard.writeText(roomCode.value)
-    alert(`Code de salle ${roomCode.value} copié dans le presse-papier !`)
+    isCopied.value = true
+    if (copyTimeout) clearTimeout(copyTimeout)
+    copyTimeout = setTimeout(() => {
+      isCopied.value = false
+    }, 1500)
   } catch (e) {
     // ignore
   }

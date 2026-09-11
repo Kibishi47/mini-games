@@ -15,30 +15,45 @@
     </div>
 
     <!-- Liste des Messages & Événements Système -->
-    <div ref="messagesContainer" class="flex-1 p-4 overflow-y-auto space-y-3 bg-board-cream">
+    <div ref="messagesContainer" @scroll="onScroll" class="flex-1 p-4 overflow-y-auto space-y-3 bg-board-cream">
       <div
         v-for="msg in roomStore.chatMessages"
         :key="msg.id"
       >
-        <!-- Message Système : Pilule bicolore centrée -->
+        <!-- Message Système : Pilule bicolore centrée sans émoji -->
         <div v-if="msg.is_system" class="flex items-center justify-center my-2">
-          <span class="text-xs font-condensed uppercase px-3 py-1 rounded-full border-2 border-ink-black bg-game-pink text-ink-black shadow-pop-xs">
-            📢 {{ msg.content }}
+          <span class="inline-flex items-center gap-1.5 text-xs font-condensed uppercase px-3 py-1 rounded-full border-2 border-ink-black bg-game-pink text-ink-black shadow-pop-xs">
+            <Megaphone class="w-3.5 h-3.5 text-ink-black" />
+            <span>{{ msg.content }}</span>
           </span>
         </div>
 
-        <!-- Message Utilisateur : Bulle blanche bordée de noir avec mascotte -->
-        <div v-else class="flex items-start space-x-3">
+        <!-- Message Utilisateur Local (aligné à droite) -->
+        <div v-else-if="msg.sender_id === roomStore.me?.id" class="flex items-end justify-end space-x-2">
+          <div class="max-w-[85%] text-right">
+            <div class="flex items-baseline justify-end space-x-2">
+              <span class="text-[10px] font-condensed text-ink-black/50">{{ formatTime(msg.created_at) }}</span>
+              <span class="font-display font-black text-xs uppercase text-game-yellow">Moi</span>
+            </div>
+            <div class="mt-1 inline-block bg-game-yellow/20 border-2 border-ink-black rounded-2xl rounded-tr-none px-3.5 py-2 shadow-pop-xs text-sm font-body font-semibold text-ink-black break-words text-left">
+              {{ msg.content }}
+            </div>
+          </div>
+          <GameMascot :name="(msg.mascot as any) || 'dice'" mood="idle" size="sm" class="mb-0.5 flex-shrink-0" />
+        </div>
+
+        <!-- Message Autre Joueur (aligné à gauche) -->
+        <div v-else class="flex items-start justify-start space-x-3">
           <GameMascot :name="(msg.mascot as any) || 'dice'" mood="idle" size="sm" class="mt-1 flex-shrink-0" />
 
-          <div class="flex-1 min-w-0">
+          <div class="max-w-[85%] min-w-0">
             <div class="flex items-baseline space-x-2">
               <span class="font-display font-black text-xs uppercase text-game-blue truncate">{{ msg.sender }}</span>
               <span class="text-[10px] font-condensed text-ink-black/50">{{ formatTime(msg.created_at) }}</span>
             </div>
 
             <!-- Bulle de dialogue Pop -->
-            <div class="mt-1 inline-block bg-board-white border-2 border-ink-black rounded-xl px-3.5 py-2 shadow-pop-xs text-sm font-body font-semibold text-ink-black break-words max-w-full">
+            <div class="mt-1 inline-block bg-board-white border-2 border-ink-black rounded-2xl rounded-tl-none px-3.5 py-2 shadow-pop-xs text-sm font-body font-semibold text-ink-black break-words max-w-full">
               {{ msg.content }}
             </div>
           </div>
@@ -80,7 +95,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue'
-import { MessageSquare, Send, VolumeX } from 'lucide-vue-next'
+import { MessageSquare, Send, VolumeX, Megaphone } from 'lucide-vue-next'
 import { useRoomStore } from '~/stores/room'
 import GameMascot from '~/components/ui/GameMascot.vue'
 import AppButton from '~/components/ui/AppButton.vue'
@@ -110,13 +125,42 @@ const formatTime = (dateStr: string) => {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-watch(
-  () => roomStore.chatMessages.length,
-  async () => {
-    await nextTick()
+const scrollToBottom = () => {
+  nextTick(() => {
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
-  }
+    // Double assurance pour le rendu des composants enfants (mascottes SVG)
+    requestAnimationFrame(() => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+      }
+    })
+  })
+}
+
+// Suivi de la position de scroll par l'utilisateur
+const isUserNearBottom = ref(true)
+
+const onScroll = () => {
+  if (!messagesContainer.value) return
+  const el = messagesContainer.value
+  // L'utilisateur est considéré "en bas" s'il est à moins de 80px du fond
+  isUserNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 80
+}
+
+watch(
+  () => roomStore.chatMessages.length,
+  () => {
+    // Si l'utilisateur était en bas avant l'arrivée du message (ou si c'est le 1er chargement), on scroll tout en bas
+    if (isUserNearBottom.value) {
+      scrollToBottom()
+    }
+  },
+  { flush: 'post' }
 )
+
+onMounted(() => {
+  scrollToBottom()
+})
 </script>
