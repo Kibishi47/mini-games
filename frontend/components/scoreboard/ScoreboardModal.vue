@@ -116,10 +116,10 @@
               <div class="font-display font-black text-sm uppercase text-ink-black">{{ player.nickname }}</div>
               <div class="font-condensed text-xs uppercase text-ink-black/70 flex items-center gap-2">
                 <span
-                  class="font-black"
+                  class="font-black font-condensed"
                   :class="(gameStore.roundSummary?.round_scores?.[player.id] ?? 0) > 0 ? 'text-game-green' : 'text-ink-black/50'"
                 >
-                  +{{ gameStore.roundSummary?.round_scores?.[player.id] ?? 0 }} pts
+                  {{ (gameStore.roundSummary?.round_scores?.[player.id] ?? 0) > 0 ? `+${gameStore.roundSummary?.round_scores?.[player.id]} pts` : '+0 pt' }}
                 </span>
                 <span
                   v-if="gameStore.roundSummary?.solve_times?.[player.id]"
