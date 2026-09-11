@@ -123,7 +123,7 @@
     </div>
 
     <!-- Corps Principal Dynamique (Lobby vs In Game) -->
-    <main class="max-w-7xl mx-auto px-6 py-6 flex-1 w-full overflow-hidden">
+    <main class="max-w-7xl mx-auto px-6 py-6 flex-1 w-full">
       <!-- 1. VUE LOBBY (En attente du lancement par le Master) -->
       <div v-if="roomStore.currentRoom?.status === 'in_lobby'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div class="lg:col-span-8 space-y-6">
@@ -315,24 +315,16 @@
           </AppCard>
         </div>
 
-        <!-- Chat du Lobby (Hauteur verrouillée à 500px pour éviter le scroll global) -->
-        <div class="lg:col-span-4 h-[500px]">
-          <ChatPanel :on-send="sendChatMessage" />
+        <!-- Chat du Lobby (Hauteur uniforme identique au jeu : 460px) -->
+        <div class="lg:col-span-4">
+          <ChatPanel :on-send="sendChatMessage" height="h-[460px]" />
         </div>
       </div>
 
-      <!-- 2. VUE EN JEU (Architecture 3 Colonnes Stricte) -->
-      <div v-else-if="roomStore.currentRoom?.status === 'in_game'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start h-[calc(100vh-6.5rem)]">
-        <!-- Colonne Gauche (3 cols) : Concurrents en direct -->
-        <div class="lg:col-span-3 h-full overflow-y-auto max-h-full">
-          <OpponentPreview
-            :opponents="gameStore.opponents"
-            :max-attempts="gameStore.maxAttempts"
-          />
-        </div>
-
-        <!-- Colonne Centrale (6 cols) : Plateau Wordle et Clavier -->
-        <div class="lg:col-span-6 h-full overflow-y-auto max-h-full">
+      <!-- 2. VUE EN JEU (Architecture 2 Colonnes : Plateau à gauche, Chat + Adversaires à droite) -->
+      <div v-else-if="roomStore.currentRoom?.status === 'in_game'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- Colonne Gauche (8 cols) : Plateau Wordle et Clavier -->
+        <div class="lg:col-span-8 space-y-6">
           <AppCard variant="white" shadow="lg" class="p-6">
             <!-- Mode Spectateur Banner -->
             <div v-if="roomStore.me?.is_spectator" class="mb-4 p-3 bg-game-pink border-2 border-ink-black rounded-xl text-center font-display font-black text-xs uppercase shadow-pop-xs flex items-center justify-center gap-2">
@@ -376,11 +368,16 @@
           </AppCard>
         </div>
 
-        <!-- Colonne Droite (3 cols) : Gazette / Chat verrouillé à 100% de la hauteur -->
-        <div class="lg:col-span-3 h-full flex flex-col min-h-[450px]">
-          <div class="flex-1 min-h-0">
-            <ChatPanel :on-send="sendChatMessage" />
-          </div>
+        <!-- Colonne Droite (4 cols) : 1. Chat (hauteur identique 460px) + 2. Adversaires en direct en dessous -->
+        <div class="lg:col-span-4 space-y-6">
+          <!-- 1. Chat Gazette du Festival (Hauteur uniforme fixe 460px identique au lobby) -->
+          <ChatPanel :on-send="sendChatMessage" height="h-[460px]" />
+
+          <!-- 2. Adversaires en Direct repositionnés sous le chat -->
+          <OpponentPreview
+            :opponents="gameStore.opponents"
+            :max-attempts="gameStore.maxAttempts"
+          />
         </div>
       </div>
     </main>

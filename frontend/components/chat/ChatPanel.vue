@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-board-white border-[3.5px] border-ink-black rounded-2xl shadow-pop-md flex flex-col h-full overflow-hidden select-none">
+  <div :class="[height, 'bg-board-white border-[3.5px] border-ink-black rounded-2xl shadow-pop-md flex flex-col overflow-hidden select-none']">
     
     <!-- En-tête du Chat Pop Moderniste -->
     <div class="px-5 py-4 border-b-[3px] border-ink-black flex items-center justify-between bg-game-yellow">
@@ -101,9 +101,15 @@ import GameMascot from '~/components/ui/GameMascot.vue'
 import AppButton from '~/components/ui/AppButton.vue'
 import AppBadge from '~/components/ui/AppBadge.vue'
 
-const props = defineProps<{
-  onSend: (content: string) => void
-}>()
+const props = withDefaults(
+  defineProps<{
+    onSend: (content: string) => void
+    height?: string
+  }>(),
+  {
+    height: 'h-[460px]',
+  }
+)
 
 const roomStore = useRoomStore()
 const inputContent = ref('')
