@@ -18,9 +18,20 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <GameMascot :name="(opp.mascot as any) || 'dice'" mood="idle" size="sm" />
-            <span class="font-display font-black text-xs uppercase text-ink-black truncate max-w-[120px]">
-              {{ opp.nickname }}
-            </span>
+            <div>
+              <span class="font-display font-black text-xs uppercase text-ink-black truncate block max-w-[110px]">
+                {{ opp.nickname }}
+              </span>
+              <div class="flex items-center gap-1.5 font-condensed text-[10px] uppercase font-bold">
+                <span :class="(opp.round_score ?? 0) > 0 ? 'text-game-green' : 'text-ink-black/50'">
+                  +{{ opp.round_score ?? 0 }} pts
+                </span>
+                <span class="text-ink-black/40">•</span>
+                <span class="text-game-blue">
+                  {{ getPlayerTotalScore(opp.user_id) }} pts
+                </span>
+              </div>
+            </div>
           </div>
           
           <div>
@@ -65,9 +76,17 @@ import AppCard from '~/components/ui/AppCard.vue'
 import AppBadge from '~/components/ui/AppBadge.vue'
 import GameMascot from '~/components/ui/GameMascot.vue'
 import type { OpponentProgress } from '~/stores/game'
+import { useRoomStore } from '~/stores/room'
 
 defineProps<{
   opponents: OpponentProgress[]
   maxAttempts: number
 }>()
+
+const roomStore = useRoomStore()
+
+const getPlayerTotalScore = (userId: string) => {
+  const p = roomStore.players.find(player => player.id === userId)
+  return p?.score ?? 0
+}
 </script>
