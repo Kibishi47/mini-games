@@ -150,7 +150,7 @@ func (h *Hub) Unregister(client *Client) {
 		if err == nil && !p.IsConnected {
 			// Les 10 secondes ont expiré sans reconnexion
 			_ = h.roomRepo.RemovePlayer(bgCtx, client.roomCode, client.userID)
-			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été déconnecté pour inactivité", p.Nickname))
+			h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle", p.Nickname))
 			h.HandleMasterSuccession(client.roomCode, client.userID)
 
 			remaining, _ := h.roomRepo.GetPlayers(bgCtx, client.roomCode)
@@ -212,7 +212,6 @@ func (h *Hub) HandleMasterSuccession(roomCode string, departedUserID uuid.UUID) 
 
 	if newMaster != nil {
 		_ = h.roomRepo.UpdateRoomMaster(ctx, roomCode, newMaster.ID)
-		h.BroadcastSystemMessage(roomCode, fmt.Sprintf("%s est maintenant le Master de la salle.", newMaster.Nickname))
 		masterChangedPayload, _ := json.Marshal(map[string]interface{}{
 			"master_id": newMaster.ID,
 			"nickname":  newMaster.Nickname,
@@ -279,7 +278,7 @@ func (h *Hub) handleLeave(client *Client) {
 
 	// Suppression immédiate de la salle
 	_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, client.userID)
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle.", nickname))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a quitté la salle", nickname))
 
 	// Événement player:left
 	leftPayload, _ := json.Marshal(map[string]interface{}{
@@ -332,7 +331,6 @@ func (h *Hub) handleResetScores(client *Client) {
 	}
 
 	_ = h.roomRepo.ResetScores(ctx, client.roomCode)
-	h.BroadcastSystemMessage(client.roomCode, "Le Master a réinitialisé tous les scores de la salle.")
 	h.BroadcastToRoom(client.roomCode, domain.WSMessage{
 		Type:    "room:scores_reset",
 		Payload: []byte("{}"),
@@ -347,30 +345,10 @@ func (h *Hub) handleChat(client *Client, payload json.RawMessage) {
 		return
 	}
 
-	// Vérifier si le joueur est muet
 	if p.IsMuted {
-		client.SendError("Vous avez été rendu muet par le Master")
+		client.SendError("Vous êtes muet et ne pouvez pas envoyer de messages")
 		return
 	}
-
-	// Rate-limiting anti-spam (max 5 messages en 3 secondes)
-	h.msgRateMu.Lock()
-	now := time.Now()
-	times := h.msgRates[client.userID]
-	recentTimes := make([]time.Time, 0, len(times))
-	for _, t := range times {
-		if now.Sub(t) < 3*time.Second {
-			recentTimes = append(recentTimes, t)
-		}
-	}
-	if len(recentTimes) >= 5 {
-		h.msgRateMu.Unlock()
-		client.SendError("Vous envoyez des messages trop vite !")
-		return
-	}
-	recentTimes = append(recentTimes, now)
-	h.msgRates[client.userID] = recentTimes
-	h.msgRateMu.Unlock()
 
 	var body struct {
 		Content string `json:"content"`
@@ -386,7 +364,7 @@ func (h *Hub) handleChat(client *Client, payload json.RawMessage) {
 
 	chatMsg := &domain.ChatMessage{
 		ID:        uuid.New().String(),
-		SenderID:  p.ID,
+		SenderID:  client.userID,
 		Sender:    p.Nickname,
 		Mascot:    p.Mascot,
 		Color:     p.Color,
@@ -412,31 +390,26 @@ func (h *Hub) handleUpdateSettings(client *Client, payload json.RawMessage) {
 		return
 	}
 
-	if room.Status != domain.RoomStatusInLobby {
-		client.SendError("Impossible de modifier les paramètres pendant une manche")
+	var settings domain.RoomSettings
+	if err := json.Unmarshal(payload, &settings); err != nil {
+		client.SendError("Format de paramètres invalide")
 		return
 	}
 
-	var newSettings domain.RoomSettings
-	if err := json.Unmarshal(payload, &newSettings); err != nil {
-		return
+	if settings.WordLength < 3 || settings.WordLength > 8 {
+		settings.WordLength = 5
+	}
+	if settings.RoundDuration < 30 || settings.RoundDuration > 120 {
+		settings.RoundDuration = 60
+	}
+	if settings.MaxRounds < 1 || settings.MaxRounds > 7 {
+		settings.MaxRounds = 3
+	}
+	if settings.MaxAttempts < 5 || settings.MaxAttempts > 7 {
+		settings.MaxAttempts = 6
 	}
 
-	// Valider les bornes
-	if newSettings.WordLength < 3 || newSettings.WordLength > 8 {
-		newSettings.WordLength = 5
-	}
-	if newSettings.RoundDuration < 30 || newSettings.RoundDuration > 180 {
-		newSettings.RoundDuration = 60
-	}
-	if newSettings.MaxRounds < 1 || newSettings.MaxRounds > 10 {
-		newSettings.MaxRounds = 3
-	}
-	if newSettings.MaxAttempts < 4 || newSettings.MaxAttempts > 8 {
-		newSettings.MaxAttempts = 6
-	}
-
-	_ = h.roomRepo.UpdateRoomSettings(ctx, client.roomCode, newSettings)
+	_ = h.roomRepo.UpdateRoomSettings(ctx, client.roomCode, settings)
 	h.SyncRoom(client.roomCode)
 }
 
@@ -475,7 +448,7 @@ func (h *Hub) handleKick(client *Client, payload json.RawMessage) {
 	h.roomsMu.RUnlock()
 
 	_ = h.roomRepo.RemovePlayer(ctx, client.roomCode, body.TargetID)
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été expulsé par le Master.", name))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été expulsé par le Master", name))
 	h.SyncRoom(client.roomCode)
 }
 
@@ -515,7 +488,7 @@ func (h *Hub) handleBan(client *Client, payload json.RawMessage) {
 	h.roomsMu.RUnlock()
 
 	_ = h.roomRepo.BanPlayer(ctx, client.roomCode, body.TargetID, targetToken)
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été banni de la salle.", name))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été banni de la salle par le Master", name))
 	h.SyncRoom(client.roomCode)
 }
 
@@ -546,7 +519,7 @@ func (h *Hub) handleMute(client *Client, payload json.RawMessage) {
 	if !body.Mute {
 		action = "autorisé à parler"
 	}
-	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été %s par le Master.", name, action))
+	h.BroadcastSystemMessage(client.roomCode, fmt.Sprintf("%s a été %s par le Master", name, action))
 	h.SyncRoom(client.roomCode)
 }
 
@@ -570,7 +543,6 @@ func (h *Hub) handleRematch(client *Client) {
 		}
 	}
 
-	h.BroadcastSystemMessage(client.roomCode, "Le Master a relancé la salle en Lobby pour une revanche.")
 	h.SyncRoom(client.roomCode)
 }
 

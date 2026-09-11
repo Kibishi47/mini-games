@@ -15,7 +15,7 @@
     </div>
 
     <!-- Liste des Messages & Événements Système -->
-    <div ref="messagesContainer" @scroll="onScroll" class="flex-1 p-4 overflow-y-auto space-y-3 bg-board-cream">
+    <div ref="messagesContainer" @scroll="handleScroll" class="flex-1 p-4 overflow-y-auto space-y-3 bg-board-cream">
       <div
         v-for="msg in roomStore.chatMessages"
         :key="msg.id"
@@ -125,42 +125,34 @@ const formatTime = (dateStr: string) => {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-const scrollToBottom = () => {
+const isAtBottom = ref(true)
+
+const handleScroll = () => {
+  const el = messagesContainer.value
+  if (!el) return
+  // Tolérance de 40px pour détecter si on est au fond
+  isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
+}
+
+const scrollToBottom = (smooth = true) => {
   nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-    // Double assurance pour le rendu des composants enfants (mascottes SVG)
-    requestAnimationFrame(() => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
-    })
+    const el = messagesContainer.value
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
   })
 }
 
-// Suivi de la position de scroll par l'utilisateur
-const isUserNearBottom = ref(true)
-
-const onScroll = () => {
-  if (!messagesContainer.value) return
-  const el = messagesContainer.value
-  // L'utilisateur est considéré "en bas" s'il est à moins de 80px du fond
-  isUserNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 80
-}
-
 watch(
-  () => roomStore.chatMessages.length,
+  () => roomStore.chatMessages,
   () => {
-    // Si l'utilisateur était en bas avant l'arrivée du message (ou si c'est le 1er chargement), on scroll tout en bas
-    if (isUserNearBottom.value) {
+    if (isAtBottom.value) {
       scrollToBottom()
     }
   },
-  { flush: 'post' }
+  { deep: true, flush: 'post' }
 )
 
 onMounted(() => {
-  scrollToBottom()
+  scrollToBottom(false)
 })
 </script>

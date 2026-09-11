@@ -170,14 +170,6 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 		Payload: statePayload,
 	})
 
-	if action == "game:stop" {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), "Le Master a arrêté la partie et ramené tout le monde au lobby.")
-	} else if action == "room:rematch" {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), "Le Master a relancé la salle en Lobby pour une revanche.")
-	} else {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), "Le Master a ramené la salle au Lobby.")
-	}
-
 	m.hub.SyncRoom(client.RoomCode())
 }
 
@@ -286,7 +278,6 @@ func (m *WordleGameManager) startRound(ctx context.Context, room *domain.Room, r
 	})
 
 	m.hub.SyncRoom(room.Code)
-	m.hub.BroadcastSystemMessage(room.Code, fmt.Sprintf("Manche %d lancée ! Mot secret de %d lettres.", roundNum, wordLen))
 
 	// Timer de fin de manche automatique
 	go func(roomCode string, rNum int, targetEndsAt time.Time) {
@@ -392,17 +383,13 @@ func (m *WordleGameManager) handleGuess(ctx context.Context, client *ws.Client, 
 		"masked_rows":  playerState.MaskedRows,
 		"is_solved":    playerState.IsSolved,
 		"is_finished":  playerState.IsFinished,
+		"round_score":  playerState.RoundScore,
 		"attempts_cnt": len(playerState.MaskedRows),
 	})
 	m.hub.BroadcastToRoom(client.RoomCode(), domain.WSMessage{
 		Type:    "game:opponent_progress",
 		Payload: opponentData,
 	})
-
-	// Notification sobre sans émoji
-	if isSolved {
-		m.hub.BroadcastSystemMessage(client.RoomCode(), fmt.Sprintf("%s a trouvé le mot en %d essai(s) !", playerState.Nickname, len(playerState.Attempts)))
-	}
 
 	// Vérifier si tous les joueurs actifs ont terminé la manche
 	allFinished := true
@@ -494,7 +481,7 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 		Payload: endPayload,
 	})
 
-	m.hub.BroadcastSystemMessage(roomCode, fmt.Sprintf("Fin de manche. Le mot était : %s", round.TargetWord))
+	m.hub.BroadcastSystemMessage(roomCode, fmt.Sprintf("Fin de la manche %d — Le mot était : %s", room.CurrentRound, round.TargetWord))
 
 	// Vérifier s'il reste des manches à jouer
 	if room.CurrentRound < room.Settings.MaxRounds {
@@ -522,7 +509,6 @@ func (m *WordleGameManager) endRound(ctx context.Context, roomCode, reason strin
 	} else {
 		// Partie terminée ! Conserver l'état de jeu avec round_state = game_over sans forcer le retour au lobby
 		_ = m.roomRepo.SetRoundState(ctx, roomCode, domain.RoundSubStateGameOver, round.TargetWord, nil)
-		m.hub.BroadcastSystemMessage(roomCode, "Partie terminée ! Retrouvez le classement général.")
 		m.hub.SyncRoom(roomCode)
 	}
 }
@@ -549,6 +535,7 @@ func (m *WordleGameManager) handleGetState(client *ws.Client) {
 				"masked_rows":  p.MaskedRows,
 				"is_solved":    p.IsSolved,
 				"is_finished":  p.IsFinished,
+				"round_score":  p.RoundScore,
 				"attempts_cnt": len(p.MaskedRows),
 			})
 		}
