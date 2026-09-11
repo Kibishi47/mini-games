@@ -18,6 +18,7 @@ const (
 type RoundSubState string
 
 const (
+	RoundSubStateIdle       RoundSubState = "idle"
 	RoundSubStatePlaying    RoundSubState = "playing"
 	RoundSubStateRoundEnded RoundSubState = "round_ended"
 	RoundSubStateGameOver   RoundSubState = "game_over"

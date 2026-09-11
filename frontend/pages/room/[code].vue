@@ -359,7 +359,7 @@
               <AppButton
                 variant="primary"
                 size="sm"
-                @click="returnLobby"
+                @click="returnToLobby"
               >
                 <RotateCcw class="w-4 h-4 mr-1.5" />
                 <span>Retourner au Lobby</span>
@@ -452,7 +452,7 @@ const {
 // Retour au lobby propre : mise à jour immédiate du store local et envoi au serveur
 const handleReturnLobby = () => {
   gameStore.returnToLobbyView()
-  wsReturnLobby()
+  returnToLobby()
 }
 
 // Fermer automatiquement la modale de fin de partie dès qu'on revient au lobby

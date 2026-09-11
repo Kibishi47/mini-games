@@ -125,7 +125,9 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 		return
 	}
 
-	if room.MasterID != client.UserID() {
+	// Autoriser si l'expéditeur est le Master OU si la partie est terminée (round_state == "game_over")
+	isGameOver := room.RoundState == domain.RoundSubStateGameOver
+	if room.MasterID != client.UserID() && !isGameOver {
 		client.SendError("Action réservée au Master")
 		return
 	}
@@ -146,11 +148,15 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 	}
 	m.mu.Unlock()
 
-	// 2. Mettre à jour l'état de la salle dans Redis
+	// 2. Mise à jour atomique dans Redis (room:{code}:meta)
+	// - status passe à "in_lobby"
+	// - round_state passe à "idle"
+	// - round_current (current_round) est réinitialisé à 1
+	// - secret_word et revealed_word sont effacés ("")
 	_ = m.roomRepo.UpdateRoomStatus(ctx, client.RoomCode(), domain.RoomStatusInLobby)
 	_ = m.roomRepo.SetSecretWord(ctx, client.RoomCode(), "")
-	_ = m.roomRepo.UpdateRound(ctx, client.RoomCode(), 0, nil)
-	_ = m.roomRepo.SetRoundState(ctx, client.RoomCode(), "", "", nil)
+	_ = m.roomRepo.UpdateRound(ctx, client.RoomCode(), 1, nil)
+	_ = m.roomRepo.SetRoundState(ctx, client.RoomCode(), domain.RoundSubStateIdle, "", nil)
 	_ = m.roomRepo.SetAllPlayersLocation(ctx, client.RoomCode(), "lobby")
 
 	// 3. Réintégrer les spectateurs en joueurs
@@ -161,7 +167,7 @@ func (m *WordleGameManager) handleStopOrReturnLobby(ctx context.Context, client 
 		}
 	}
 
-	// 4. Broadcaster room:state_changed et room:sync
+	// 4. Diffusion immédiate à tous les clients
 	statePayload, _ := json.Marshal(map[string]interface{}{
 		"status": domain.RoomStatusInLobby,
 	})

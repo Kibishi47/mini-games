@@ -131,12 +131,19 @@ export function useWebSocket(roomCode: string) {
           }
         } else if (payload?.status === 'in_lobby') {
           gameStore.showRoundSummary = false
+          gameStore.isGameOver = false
+          gameStore.viewMode = 'lobby'
         }
         break
 
       case 'room:state_changed':
         if (payload?.status) {
           roomStore.updateStatus(payload.status)
+          if (payload.status === 'in_lobby') {
+            gameStore.showRoundSummary = false
+            gameStore.isGameOver = false
+            gameStore.viewMode = 'lobby'
+          }
         }
         break
 

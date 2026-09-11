@@ -219,7 +219,9 @@ const copied = ref(false)
 
 const handleIndividualReturnLobby = () => {
   gameStore.showRoundSummary = false
-  if (props.onIndividualReturnLobby) {
+  if (props.onReturnLobby) {
+    props.onReturnLobby()
+  } else if (props.onIndividualReturnLobby) {
     props.onIndividualReturnLobby()
   }
 }
