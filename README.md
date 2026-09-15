@@ -1,6 +1,6 @@
 # 🎮 MiniGames - Plateforme Multijoueur Temps Réel (Wordle & Poker)
 
-Plateforme web desktop de jeux multijoueur compétitifs en temps réel avec moteur **Server-Authoritative** ultra-robuste en **Go 1.23+**, interface réactive en **Nuxt 3**, et état temps réel **100% Redis 7**. Deux mini-jeux sont disponibles à la création d'une salle : **Wordle** (mot mystère en manches chronométrées) et **Poker Texas Hold'em** (jetons, blindes, side pots).
+Plateforme web desktop de jeux multijoueur compétitifs en temps réel avec moteur **Server-Authoritative** ultra-robuste en **Go 1.23+**, interface réactive en **Nuxt 3**, et état temps réel **100% Redis 7**. Le parcours est pensé pour un même groupe d'amis : on **crée la salle**, on **invite** en partageant le code, puis on **choisit le jeu** depuis le lobby — **Wordle** (mot mystère en manches chronométrées) ou **Poker Texas Hold'em** (jetons, blindes, side pots) — et on peut changer de jeu entre deux parties sans jamais recréer de salle.
 
 Le projet adopte la philosophie des jeux viraux instantanés (type Skribbl.io ou Codenames) : **zéro compte, zéro mot de passe, zéro base de données SQL**. Tout repose sur un mode Invité (Guest) persistant localement sur le client, un état temps réel ultra-rapide géré dans Redis, et un binaire Go compilé ultra-léger.
 
@@ -11,6 +11,13 @@ Le projet adopte la philosophie des jeux viraux instantanés (type Skribbl.io ou
 * **Zéro friction / 100% Mode Invité** :
   * Pseudo + choix parmi 6 mascottes vectorielles SVG animées (`dice`, `domino`, `card`, `knight`, `d20`, `meeple`).
   * Persistance locale via `localStorage`.
+* **Salle d'abord, jeu ensuite** :
+  * La création d'une salle ne fige plus le jeu : le Master invite son groupe puis choisit **Wordle** ou **Poker** directement dans le lobby.
+  * Le jeu de la salle reste modifiable par le Master tant qu'aucune partie n'est en cours, ce qui permet d'enchaîner plusieurs jeux avec le même groupe de joueurs sans jamais recréer de salle.
+* **Table de Poker « vraie » avec juice** :
+  * Sièges disposés en ellipse autour d'une table de feutre, joueur toujours positionné en bas, bouton dealer animé qui suit la rotation des blindes.
+  * Distribution des cartes façon croupier (flip 3D, entrée en cascade), jetons empilés par dénomination pour les mises et le pot, anneau de décompte autour du joueur actif, halo doré et éclats de confettis pour le(s) gagnant(s) de la main.
+  * Raccourcis de mise 1/2 pot, pot, tapis dans les contrôles d'action.
 * **Moteur Server-Authoritative Wordle (3 à 8 lettres)** :
   * Dictionnaires français complets embarqués à la compilation via `//go:embed` (plus de 51 000 mots valides, 4 300 cibles usuelles du quotidien).
   * Validation $O(1)$ et tirage aléatoire par longueur.
@@ -100,7 +107,7 @@ make logs        # Affiche les logs en continu
     ├── components/
     │   ├── ui/                  # AppButton, AppCard, AppBadge, AppInput, GameMascot
     │   ├── wordle/              # WordleGrid, OpponentPreview
-    │   ├── poker/               # PlayingCard, PokerSeat, PokerControls, PokerTable
+    │   ├── poker/               # PlayingCard, PokerChipStack, PokerSeat, PokerControls, PokerTable
     │   ├── chat/                # ChatPanel
     │   └── scoreboard/          # ScoreboardModal (Wordle)
     ├── stores/                  # Stores Pinia (profile, room, game, poker)

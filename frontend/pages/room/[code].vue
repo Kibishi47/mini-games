@@ -159,6 +159,39 @@
               </div>
             </div>
 
+            <!-- Choix du Mini-Jeu (Modifiable par le Master entre deux parties, avec le même groupe) -->
+            <div class="space-y-2">
+              <label class="block font-display font-bold text-[10px] uppercase text-ink-black/60">
+                Jeu de la Salle
+              </label>
+              <div class="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  :disabled="!roomStore.isMaster"
+                  @click="onGameTypeChange('wordle')"
+                  :class="[
+                    'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none disabled:cursor-not-allowed',
+                    !isPoker ? 'bg-game-yellow shadow-pop-sm scale-[1.02] z-10' : 'bg-board-cream/60 hover:enabled:bg-board-white shadow-pop-xs opacity-70'
+                  ]"
+                >
+                  <Type class="w-5 h-5 text-game-blue" />
+                  <span class="font-display font-black text-xs uppercase mt-1">Wordle</span>
+                </button>
+                <button
+                  type="button"
+                  :disabled="!roomStore.isMaster"
+                  @click="onGameTypeChange('poker')"
+                  :class="[
+                    'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none disabled:cursor-not-allowed',
+                    isPoker ? 'bg-game-yellow shadow-pop-sm scale-[1.02] z-10' : 'bg-board-cream/60 hover:enabled:bg-board-white shadow-pop-xs opacity-70'
+                  ]"
+                >
+                  <Spade class="w-5 h-5 text-ink-black fill-ink-black" />
+                  <span class="font-display font-black text-xs uppercase mt-1">Poker</span>
+                </button>
+              </div>
+            </div>
+
             <!-- Paramètres de la Salle (Modifiables par le Master) -->
             <div v-if="isPoker" class="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
               <!-- Tapis de Départ -->
@@ -491,7 +524,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { Copy, Check, Crown, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square, RotateCcw } from 'lucide-vue-next'
+import { Copy, Check, Crown, Clock, LogOut, Play, Volume2, VolumeX, UserMinus, Ban, AlertTriangle, Square, RotateCcw, Type, Spade, Trophy } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useProfileStore } from '~/stores/profile'
 import { useRoomStore } from '~/stores/room'
@@ -711,6 +744,15 @@ const leaveRoom = async () => {
   wsLeaveRoom()
   profileStore.clearSession()
   router.push('/')
+}
+
+// Changement du jeu de la salle par le Master (uniquement possible au lobby — même groupe, jeu différent)
+const onGameTypeChange = (type: 'wordle' | 'poker') => {
+  if (!roomStore.isMaster || type === roomStore.currentRoom?.settings?.game_type) return
+  updateSettings({
+    ...(roomStore.currentRoom?.settings || {}),
+    game_type: type,
+  })
 }
 
 // Mise à jour des paramètres par le Master

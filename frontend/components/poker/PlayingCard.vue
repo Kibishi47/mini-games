@@ -1,18 +1,25 @@
 <template>
+  <div v-if="placeholder" :class="['rounded-lg border-2 border-dashed border-ink-black/25 bg-transparent flex-shrink-0', sizeClasses]" />
   <div
-    :class="[
-      'rounded-lg flex items-center justify-center select-none flex-shrink-0',
-      sizeClasses,
-      code ? 'border-[3px] border-ink-black bg-board-white shadow-pop-xs' :
-        placeholder ? 'border-2 border-dashed border-ink-black/25 bg-transparent' :
-        'border-[3px] border-ink-black bg-game-blue shadow-pop-xs'
-    ]"
+    v-else
+    :class="['card-3d flex-shrink-0 select-none', sizeClasses, dealt ? 'card-deal-in' : '']"
+    :style="dealt ? { animationDelay: `${Math.max(index, 0) * 80}ms` } : {}"
   >
-    <div v-if="code" :class="['flex flex-col items-center leading-none', colorClass]">
-      <span :class="['font-condensed font-black', rankSizeClass]">{{ rankLabel }}</span>
-      <span :class="suitSizeClass">{{ suitSymbol }}</span>
+    <div :class="['card-3d-inner', code ? 'is-flipped' : '']">
+      <!-- Dos de carte (motif) -->
+      <div class="card-face card-back-face border-[3px] border-ink-black bg-game-blue shadow-pop-xs rounded-lg">
+        <div class="card-back-pattern">
+          <span v-for="n in 4" :key="n" class="card-back-dot" />
+        </div>
+      </div>
+      <!-- Face visible (rang + couleur) -->
+      <div class="card-face card-front-face border-[3px] border-ink-black bg-board-white shadow-pop-xs rounded-lg flex items-center justify-center">
+        <div v-if="code" :class="['flex flex-col items-center leading-none', colorClass]">
+          <span :class="['font-condensed font-black', rankSizeClass]">{{ rankLabel }}</span>
+          <span :class="suitSizeClass">{{ suitSymbol }}</span>
+        </div>
+      </div>
     </div>
-    <div v-else-if="!placeholder" class="w-2/3 h-2/3 rounded-md border-2 border-board-white/50" />
   </div>
 </template>
 
@@ -24,11 +31,15 @@ const props = withDefaults(
     code?: string | null // ex: "AS" (As de Pique), "TD" (10 de Carreau) — null/undefined = carte cachée
     size?: 'sm' | 'md' | 'lg'
     placeholder?: boolean // true = emplacement vide en pointillés (carte pas encore distribuée) plutôt qu'un dos de carte
+    index?: number // position dans la distribution, pilote le décalage d'animation "dealing"
+    dealt?: boolean // true = joue l'animation d'entrée façon distribution de croupier
   }>(),
   {
     code: null,
     size: 'md',
     placeholder: false,
+    index: 0,
+    dealt: false,
   }
 )
 
@@ -65,3 +76,68 @@ const sizeClasses = computed(() => {
 const rankSizeClass = computed(() => (props.size === 'lg' ? 'text-xl' : props.size === 'sm' ? 'text-xs' : 'text-sm'))
 const suitSizeClass = computed(() => (props.size === 'lg' ? 'text-2xl' : props.size === 'sm' ? 'text-sm' : 'text-lg'))
 </script>
+
+<style scoped>
+.card-3d {
+  perspective: 500px;
+}
+
+.card-3d-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.4s cubic-bezier(0.2, 0.85, 0.25, 1);
+}
+
+.card-3d-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-back-face {
+  transform: rotateY(0deg);
+}
+
+.card-front-face {
+  transform: rotateY(180deg);
+}
+
+.card-back-pattern {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  place-items: center;
+  padding: 15%;
+}
+
+.card-back-dot {
+  width: 35%;
+  height: 35%;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+@keyframes cardDealIn {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.5) rotate(-10deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.card-deal-in {
+  animation: cardDealIn 0.32s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+</style>

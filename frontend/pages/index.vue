@@ -142,41 +142,17 @@
               <AppBadge variant="master">Gratuit & Instantané</AppBadge>
             </div>
 
-            <!-- Choix du Mini-Jeu -->
-            <div class="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                @click="selectedGameType = 'wordle'"
-                :class="[
-                  'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none',
-                  selectedGameType === 'wordle' ? 'bg-board-white shadow-pop-sm scale-[1.02] z-10' : 'bg-board-cream/60 hover:bg-board-white shadow-pop-xs'
-                ]"
-              >
-                <Type class="w-6 h-6 text-game-blue" />
-                <span class="font-display font-black text-sm uppercase mt-1.5">Wordle</span>
-                <span class="text-[10px] font-body text-ink-black/60 text-center">Mot mystère en manches chronométrées</span>
-              </button>
-              <button
-                type="button"
-                @click="selectedGameType = 'poker'"
-                :class="[
-                  'flex flex-col items-center justify-center p-3 rounded-2xl border-[3px] border-ink-black transition-none select-none',
-                  selectedGameType === 'poker' ? 'bg-board-white shadow-pop-sm scale-[1.02] z-10' : 'bg-board-cream/60 hover:bg-board-white shadow-pop-xs'
-                ]"
-              >
-                <Spade class="w-6 h-6 text-ink-black fill-ink-black" />
-                <span class="font-display font-black text-sm uppercase mt-1.5">Poker</span>
-                <span class="text-[10px] font-body text-ink-black/60 text-center">Texas Hold'em jetons & blindes</span>
-              </button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2.5 py-1 rounded-full border-2 border-ink-black bg-board-white font-condensed font-black text-[11px] uppercase flex items-center gap-1.5">
+                <Type class="w-3.5 h-3.5 text-game-blue" /> Wordle
+              </span>
+              <span class="px-2.5 py-1 rounded-full border-2 border-ink-black bg-board-white font-condensed font-black text-[11px] uppercase flex items-center gap-1.5">
+                <Spade class="w-3.5 h-3.5 text-ink-black fill-ink-black" /> Poker
+              </span>
             </div>
 
             <p class="font-body text-sm text-ink-black/80">
-              <template v-if="selectedGameType === 'poker'">
-                Invite tes amis pour une partie de <strong>Texas Hold'em</strong> ! Tu seras désigné <strong>Master</strong> pour lancer les mains et régler les blindes.
-              </template>
-              <template v-else>
-                Invite tes amis dans ton salon de jeu de société personnalisé. Tu seras désigné <strong>Master</strong> pour lancer les manches de 3 à 8 lettres à ta convenance.
-              </template>
+              Invite d'abord tes amis dans ta salle, puis choisissez ensemble <strong>Wordle</strong> ou <strong>Poker</strong> depuis le lobby — vous pourrez changer de jeu à tout moment entre deux parties, sans quitter le groupe. Tu seras désigné <strong>Master</strong>.
             </p>
 
             <AppButton
@@ -257,7 +233,6 @@ const router = useRouter()
 
 const inputNickname = ref('')
 const inputRoomCode = ref('')
-const selectedGameType = ref<'wordle' | 'poker'>('wordle')
 const isLoading = ref(false)
 const errorMessage = ref('')
 const closedRoomAlert = ref(false)
@@ -298,9 +273,6 @@ const handleCreateRoom = async () => {
         nickname: profileStore.nickname,
         mascot: profileStore.mascot,
         color: profileStore.color,
-        settings: {
-          game_type: selectedGameType.value,
-        },
       },
     })
 

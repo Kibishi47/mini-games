@@ -396,8 +396,11 @@ func (h *Hub) handleUpdateSettings(client *Client, payload json.RawMessage) {
 		return
 	}
 
-	// Le type de jeu est figé à la création de la salle et ne peut pas être changé en cours de route
-	settings.GameType = room.Settings.GameType
+	// Le type de jeu ne peut être changé que tant que la salle est encore au lobby (jamais en pleine partie) :
+	// ça permet à un même groupe de joueurs d'enchaîner Wordle puis Poker (ou l'inverse) sans recréer de salle.
+	if room.Status == domain.RoomStatusInGame || (settings.GameType != domain.GameTypeWordle && settings.GameType != domain.GameTypePoker) {
+		settings.GameType = room.Settings.GameType
+	}
 
 	if settings.GameType == domain.GameTypePoker {
 		if settings.StartingChips < 100 || settings.StartingChips > 1000000 {

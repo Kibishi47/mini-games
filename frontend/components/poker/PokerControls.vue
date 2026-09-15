@@ -28,19 +28,33 @@
         </AppButton>
       </div>
 
-      <div v-if="showRaiseSlider" class="flex flex-wrap items-center gap-3 pt-3 border-t-2 border-ink-black">
-        <input
-          type="range"
-          :min="minRaiseTarget"
-          :max="maxRaiseTarget"
-          :step="Math.max(bigBlind, 1)"
-          v-model.number="raiseAmount"
-          class="flex-1 min-w-[120px]"
-        />
-        <AppInput v-model.number="raiseAmount" type="number" class="w-24 text-center" />
-        <AppButton variant="success" size="sm" @click="confirmRaise">
-          {{ currentBet > 0 ? 'Relancer à' : 'Miser' }} {{ raiseAmount }}
-        </AppButton>
+      <div v-if="showRaiseSlider" class="flex flex-col gap-3 pt-3 border-t-2 border-ink-black">
+        <!-- Raccourcis façon table de casino : 1/2 pot, pot, tapis -->
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="q in quickBets"
+            :key="q.label"
+            type="button"
+            @click="raiseAmount = q.value"
+            class="px-2.5 py-1 rounded-lg border-2 border-ink-black bg-board-cream hover:bg-game-yellow font-condensed font-black text-[11px] uppercase shadow-pop-xs active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-none"
+          >
+            {{ q.label }}
+          </button>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <input
+            type="range"
+            :min="minRaiseTarget"
+            :max="maxRaiseTarget"
+            :step="Math.max(bigBlind, 1)"
+            v-model.number="raiseAmount"
+            class="flex-1 min-w-[120px]"
+          />
+          <AppInput v-model.number="raiseAmount" type="number" class="w-24 text-center" />
+          <AppButton variant="success" size="sm" @click="confirmRaise">
+            {{ currentBet > 0 ? 'Relancer à' : 'Miser' }} {{ raiseAmount }}
+          </AppButton>
+        </div>
       </div>
     </template>
   </div>
@@ -51,16 +65,22 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import AppButton from '~/components/ui/AppButton.vue'
 import AppInput from '~/components/ui/AppInput.vue'
 
-const props = defineProps<{
-  isMyTurn: boolean
-  callAmount: number
-  currentBet: number
-  minRaise: number
-  bigBlind: number
-  myChips: number
-  myCommitted: number
-  actionEndsAt?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    isMyTurn: boolean
+    callAmount: number
+    currentBet: number
+    minRaise: number
+    bigBlind: number
+    myChips: number
+    myCommitted: number
+    actionEndsAt?: string
+    pot?: number
+  }>(),
+  {
+    pot: 0,
+  }
+)
 
 const emit = defineEmits<{
   (e: 'action', payload: { action: string; amount: number }): void
@@ -75,6 +95,17 @@ const minRaiseTarget = computed(() => {
 })
 
 const maxRaiseTarget = computed(() => props.myChips + props.myCommitted)
+
+// Raccourcis de mise façon table de casino, calculés à partir du pot courant et bornés à mon tapis
+const quickBets = computed(() => {
+  const potAfterCall = props.pot + Math.min(props.callAmount, props.myChips)
+  const clamp = (v: number) => Math.max(minRaiseTarget.value, Math.min(Math.round(v), maxRaiseTarget.value))
+  return [
+    { label: '1/2 Pot', value: clamp(potAfterCall * 0.5) },
+    { label: 'Pot', value: clamp(potAfterCall) },
+    { label: 'Tapis', value: maxRaiseTarget.value },
+  ]
+})
 
 const toggleRaiseSlider = () => {
   showRaiseSlider.value = !showRaiseSlider.value
